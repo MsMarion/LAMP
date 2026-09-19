@@ -1,0 +1,20 @@
+LAMP API — Endpoints
+
+Base: http://localhost/api/
+Auth: PHP sessions. Use `credentials: 'include'` on every fetch.
+
+POST    register.php                    {username, email, password, full_name?}       → 201
+POST    login.php                       {username|email, password}                    → 200 + user info (role)
+POST    logout.php                      —                                             → 200
+GET     me.php                          —                                             → 200 + user info
+POST    contacts_create.php             {name, phone?, email?, address?, notes?}      → 201
+GET     contacts_list.php?q=<search>    —                                             → 200 + array
+PUT     contacts_update.php             {id, name?, phone?, email?, address?, notes?} → 200
+DELETE  contacts_delete.php             {id}                                          → 200
+GET     admin_users_list.php?q=<search> —                                             → 200 + array
+PUT     admin_disable_user.php          {user_id, is_disabled}                        → 200
+PUT     admin_change_password.php       {user_id, new_password}                       → 200
+POST    admin_create_user.php           {username, email, password, role, full_name?} → 201
+
+Errors: { "error": "message" }
+Codes: 200/201 ok | 400 bad input | 401 not logged in | 403 forbidden | 404 missing | 409 duplicate
