@@ -1,6 +1,10 @@
 <?php
 require 'config.php';
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'Method not allowed']);
@@ -8,22 +12,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
-$identifier = trim($input['username'] ?? $input['email'] ?? '');
-$password   = $input['password'] ?? '';
+$username = trim($input['username'] ?? '');
+$password = $input['password'] ?? '';
 
-if ($identifier === '' || $password === '') {
+if ($username === '' || $password === '') {
     http_response_code(400);
-    echo json_encode(['error' => 'username/email and password are required']);
+    echo json_encode(['error' => 'username and password are required']);
     exit;
 }
 
 $stmt = $pdo->prepare(
-    "SELECT id, username, email, password_hash
+    "SELECT id, username, full_name, password_hash, role, is_disabled
      FROM users
-     WHERE username = ? OR email = ?
+     WHERE username = ?
      LIMIT 1"
 );
-$stmt->execute([$identifier, $identifier]);
+$stmt->execute([$username]);
 $user = $stmt->fetch();
 
 if (!$user || !password_verify($password, $user['password_hash'])) {
@@ -32,9 +36,20 @@ if (!$user || !password_verify($password, $user['password_hash'])) {
     exit;
 }
 
+if ((int)$user['is_disabled'] === 1) {
+    http_response_code(403);
+    echo json_encode(['error' => 'account disabled — contact an administrator']);
+    exit;
+}
+
+$_SESSION['user_id']  = (int)$user['id'];
+$_SESSION['username'] = $user['username'];
+$_SESSION['role']     = $user['role'];
+
 echo json_encode([
     'success' => true,
-    'user_id' => (int)$user['id'],
-    'username' => $user['username'],
-    'email' => $user['email'],
+    'user_id'   => (int)$user['id'],
+    'username'  => $user['username'],
+    'full_name' => $user['full_name'],
+    'role'      => $user['role'],
 ]);
