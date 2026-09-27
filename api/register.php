@@ -8,18 +8,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
-$username = trim($input['username'] ?? '');
-$email    = trim($input['email'] ?? '');
-$password = $input['password'] ?? '';
+$username  = trim($input['username'] ?? '');
+$password  = $input['password'] ?? '';
+$full_name = trim($input['full_name'] ?? '');
 
-if ($username === '' || $email === '' || $password === '') {
+if ($username === '' || $password === '') {
     http_response_code(400);
-    echo json_encode(['error' => 'username, email, and password are required']);
-    exit;
-}
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    http_response_code(400);
-    echo json_encode(['error' => 'invalid email']);
+    echo json_encode(['error' => 'username and password are required']);
     exit;
 }
 if (strlen($password) < 8) {
@@ -32,20 +27,21 @@ $hash = password_hash($password, PASSWORD_BCRYPT);
 
 try {
     $stmt = $pdo->prepare(
-        "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)"
+        "INSERT INTO users (username, full_name, password_hash) VALUES (?, ?, ?)"
     );
-    $stmt->execute([$username, $email, $hash]);
+    $stmt->execute([$username, $full_name, $hash]);
 
     http_response_code(201);
     echo json_encode([
         'success' => true,
         'user_id' => (int)$pdo->lastInsertId(),
         'username' => $username,
+        'full_name' => $full_name,
     ]);
 } catch (PDOException $e) {
     if ((int)$e->errorInfo[1] === 1062) {
         http_response_code(409);
-        echo json_encode(['error' => 'username or email already exists']);
+        echo json_encode(['error' => 'username already exists']);
     } else {
         http_response_code(500);
         echo json_encode(['error' => 'registration failed']);
