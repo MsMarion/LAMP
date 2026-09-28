@@ -1,19 +1,63 @@
 <?php
 
-require 'helpers.php';
+require_once __DIR__ . '/helpers.php';
 
 requireMethod('DELETE');
-requireLogin();
 
-$input = json_decode(file_get_contents('php://input'), true) ?? [];
+$user = requireLogin();
+$userId = (int)$user['id'];
 
-$id = $input['id'] ?? null;
+$input = json_decode(file_get_contents('php://input'), true);
 
-if (!$id) {
-    sendJson(['error' => 'contact id is required'], 400);
+if (!is_array($input)) {
+    sendJson([
+        'success' => false,
+        'error' => 'Invalid JSON'
+    ], 400);
 }
 
-sendJson([
-    'message' => 'contact delete endpoint ready',
-    'database' => 'not connected yet'
-], 501);
+$id = filter_var(
+    $input['id'] ?? null,
+    FILTER_VALIDATE_INT
+);
+
+if (!$id || $id < 1) {
+    sendJson([
+        'success' => false,
+        'error' => 'Valid contact ID is required'
+    ], 400);
+}
+
+try {
+    /*
+     * Ownership is enforced directly in the DELETE statement.
+     */
+    $stmt = $pdo->prepare(
+        "DELETE FROM contacts
+         WHERE id = ?
+         AND user_id = ?"
+    );
+
+    $stmt->execute([
+        $id,
+        $userId
+    ]);
+
+    if ($stmt->rowCount() === 0) {
+        sendJson([
+            'success' => false,
+            'error' => 'Contact not found'
+        ], 404);
+    }
+
+    sendJson([
+        'success' => true,
+        'message' => 'Contact deleted successfully'
+    ]);
+
+} catch (PDOException $e) {
+    sendJson([
+        'success' => false,
+        'error' => 'Unable to delete contact'
+    ], 500);
+}
