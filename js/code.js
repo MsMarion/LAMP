@@ -1,6 +1,7 @@
 const LOGIN_URL = "/api/login.php";
 const REGISTER_URL = "/api/register.php";
 const LOGOUT_URL = "/api/logout.php";
+const ME_URL = "/api/me.php";
 
 
 function setMessage(elementId, message, type = "danger") {
@@ -16,25 +17,29 @@ function setMessage(elementId, message, type = "danger") {
 
 
 async function doLogin() {
-
     const usernameInput = document.getElementById("loginName");
     const passwordInput = document.getElementById("loginPassword");
 
-    const username = usernameInput ? usernameInput.value.trim() : "";
-    const password = passwordInput ? passwordInput.value : "";
+    const username = usernameInput
+        ? usernameInput.value.trim()
+        : "";
 
-    setMessage("loginResult", "", "danger");
+    const password = passwordInput
+        ? passwordInput.value
+        : "";
+
+    setMessage("loginResult", "");
 
     if (!username || !password) {
         setMessage(
             "loginResult",
             "Username and password are required."
         );
+
         return;
     }
 
     try {
-
         const response = await fetch(LOGIN_URL, {
             method: "POST",
 
@@ -53,7 +58,6 @@ async function doLogin() {
         const data = await response.json();
 
         if (!response.ok) {
-
             setMessage(
                 "loginResult",
                 data.error || "Login failed."
@@ -63,10 +67,9 @@ async function doLogin() {
         }
 
         /*
-         * These values are only for displaying information in the UI.
+         * These values are only for UI convenience.
          *
-         * Authentication and authorization are handled by the PHP
-         * session on the server.
+         * The PHP session is the real authentication mechanism.
          */
         sessionStorage.setItem(
             "username",
@@ -84,15 +87,11 @@ async function doLogin() {
         );
 
         /*
-         * For now all successful logins go to contacts.html.
-         *
-         * When admin.html is built, we will change this so admins
-         * are redirected to the admin dashboard.
+         * Admin routing will be added when admin.html is built.
          */
         window.location.href = "contacts.html";
 
     } catch (error) {
-
         console.error(error);
 
         setMessage(
@@ -104,10 +103,14 @@ async function doLogin() {
 
 
 async function doRegister() {
+    const usernameInput =
+        document.getElementById("loginName");
 
-    const usernameInput = document.getElementById("loginName");
-    const passwordInput = document.getElementById("loginPassword");
-    const fullNameInput = document.getElementById("fullName");
+    const passwordInput =
+        document.getElementById("loginPassword");
+
+    const fullNameInput =
+        document.getElementById("fullName");
 
     const username = usernameInput
         ? usernameInput.value.trim()
@@ -121,10 +124,9 @@ async function doRegister() {
         ? fullNameInput.value.trim()
         : "";
 
-    setMessage("loginResult", "", "danger");
+    setMessage("loginResult", "");
 
     if (!fullName || !username || !password) {
-
         setMessage(
             "loginResult",
             "Full name, username, and password are required."
@@ -134,7 +136,6 @@ async function doRegister() {
     }
 
     if (username.length < 3) {
-
         setMessage(
             "loginResult",
             "Username must be at least 3 characters."
@@ -144,7 +145,6 @@ async function doRegister() {
     }
 
     if (password.length < 8) {
-
         setMessage(
             "loginResult",
             "Password must be at least 8 characters."
@@ -154,7 +154,6 @@ async function doRegister() {
     }
 
     try {
-
         const response = await fetch(REGISTER_URL, {
             method: "POST",
 
@@ -174,7 +173,6 @@ async function doRegister() {
         const data = await response.json();
 
         if (!response.ok) {
-
             setMessage(
                 "loginResult",
                 data.error || "Registration failed."
@@ -194,7 +192,6 @@ async function doRegister() {
         }, 1000);
 
     } catch (error) {
-
         console.error(error);
 
         setMessage(
@@ -206,40 +203,75 @@ async function doRegister() {
 
 
 /*
- * contacts.html currently calls readCookie() when it loads.
+ * This name is kept because contacts.html already calls readCookie().
  *
- * We are keeping the function name for compatibility with the
- * existing page, but authentication is NOT based on cookies created
- * by JavaScript anymore.
+ * It no longer trusts a JavaScript userId cookie.
  *
- * PHP sessions handle authentication.
+ * Instead it asks the PHP server which authenticated user owns
+ * the current session.
  */
-function readCookie() {
+async function readCookie() {
+    try {
+        const response = await fetch(ME_URL, {
+            method: "GET",
+            credentials: "same-origin"
+        });
 
-    const fullName =
-        sessionStorage.getItem("full_name") || "";
+        if (!response.ok) {
+            sessionStorage.clear();
+            window.location.href = "index.html";
+            return;
+        }
 
-    const username =
-        sessionStorage.getItem("username") || "";
+        const data = await response.json();
 
-    const userNameElement =
-        document.getElementById("userName");
+        if (!data.success || !data.user) {
+            sessionStorage.clear();
+            window.location.href = "index.html";
+            return;
+        }
 
-    if (userNameElement) {
+        const user = data.user;
 
-        const displayName =
-            fullName || username || "User";
+        sessionStorage.setItem(
+            "username",
+            user.username || ""
+        );
 
-        userNameElement.textContent =
-            `Logged in as ${displayName}`;
+        sessionStorage.setItem(
+            "full_name",
+            user.full_name || ""
+        );
+
+        sessionStorage.setItem(
+            "role",
+            user.role || "user"
+        );
+
+        const userNameElement =
+            document.getElementById("userName");
+
+        if (userNameElement) {
+            const displayName =
+                user.full_name ||
+                user.username ||
+                "User";
+
+            userNameElement.textContent =
+                `Logged in as ${displayName}`;
+        }
+
+    } catch (error) {
+        console.error(error);
+
+        sessionStorage.clear();
+        window.location.href = "index.html";
     }
 }
 
 
 async function doLogout() {
-
     try {
-
         await fetch(LOGOUT_URL, {
             method: "POST",
             credentials: "same-origin"

@@ -9,7 +9,6 @@ if (session_status() === PHP_SESSION_NONE) {
 $_SESSION = [];
 
 if (ini_get('session.use_cookies')) {
-
     $params = session_get_cookie_params();
 
     setcookie(
