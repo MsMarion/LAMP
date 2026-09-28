@@ -8,13 +8,18 @@ const CONTACT_LIST_URL = "/api/contacts_list.php";
 const CONTACT_UPDATE_URL = "/api/contacts_update.php";
 const CONTACT_DELETE_URL = "/api/contacts_delete.php";
 
+const ADMIN_USERS_URL = "/api/admin_users_list.php";
+const ADMIN_CONTACTS_URL = "/api/admin_contacts_list.php";
+const ADMIN_DISABLE_URL = "/api/admin_disable_user.php";
+const ADMIN_PASSWORD_URL = "/api/admin_change_password.php";
+const ADMIN_CREATE_URL = "/api/admin_create_user.php";
 
 let currentContacts = [];
+let currentAdminUsers = [];
 
 
-/*
- * Display a message without using browser alert boxes.
- */
+/* ---------------- GENERAL ---------------- */
+
 function setMessage(elementId, message, type = "danger") {
     const element = document.getElementById(elementId);
 
@@ -27,9 +32,6 @@ function setMessage(elementId, message, type = "danger") {
 }
 
 
-/*
- * Safely read JSON responses.
- */
 async function getJsonResponse(response) {
     try {
         return await response.json();
@@ -42,12 +44,8 @@ async function getJsonResponse(response) {
 }
 
 
-/*
- * If a protected API reports that the session is no longer valid,
- * return the user to the login page.
- */
 function handleAuthenticationFailure(response) {
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
         sessionStorage.clear();
         window.location.href = "index.html";
         return true;
@@ -57,23 +55,16 @@ function handleAuthenticationFailure(response) {
 }
 
 
-/*
- * LOGIN
- */
+/* ---------------- LOGIN ---------------- */
+
 async function doLogin() {
-    const usernameInput =
-        document.getElementById("loginName");
+    const username =
+        document.getElementById("loginName")
+            ?.value.trim() || "";
 
-    const passwordInput =
-        document.getElementById("loginPassword");
-
-    const username = usernameInput
-        ? usernameInput.value.trim()
-        : "";
-
-    const password = passwordInput
-        ? passwordInput.value
-        : "";
+    const password =
+        document.getElementById("loginPassword")
+            ?.value || "";
 
     setMessage("loginResult", "");
 
@@ -97,8 +88,8 @@ async function doLogin() {
             credentials: "same-origin",
 
             body: JSON.stringify({
-                username: username,
-                password: password
+                username,
+                password
             })
         });
 
@@ -128,10 +119,11 @@ async function doLogin() {
             data.role || "user"
         );
 
-        /*
-         * Admin routing will be added when admin.html exists.
-         */
-        window.location.href = "contacts.html";
+        if (data.role === "admin") {
+            window.location.href = "admin.html";
+        } else {
+            window.location.href = "contacts.html";
+        }
 
     } catch (error) {
         console.error(error);
@@ -144,30 +136,20 @@ async function doLogin() {
 }
 
 
-/*
- * REGISTRATION
- */
+/* ---------------- REGISTER ---------------- */
+
 async function doRegister() {
-    const usernameInput =
-        document.getElementById("loginName");
+    const username =
+        document.getElementById("loginName")
+            ?.value.trim() || "";
 
-    const passwordInput =
-        document.getElementById("loginPassword");
+    const password =
+        document.getElementById("loginPassword")
+            ?.value || "";
 
-    const fullNameInput =
-        document.getElementById("fullName");
-
-    const username = usernameInput
-        ? usernameInput.value.trim()
-        : "";
-
-    const password = passwordInput
-        ? passwordInput.value
-        : "";
-
-    const fullName = fullNameInput
-        ? fullNameInput.value.trim()
-        : "";
+    const fullName =
+        document.getElementById("fullName")
+            ?.value.trim() || "";
 
     setMessage("loginResult", "");
 
@@ -209,8 +191,8 @@ async function doRegister() {
             credentials: "same-origin",
 
             body: JSON.stringify({
-                username: username,
-                password: password,
+                username,
+                password,
                 full_name: fullName
             })
         });
@@ -247,113 +229,111 @@ async function doRegister() {
 }
 
 
-/*
- * SESSION CHECK
- *
- * The function name is kept for compatibility with the existing
- * project. Authentication is performed by the PHP session.
- */
-async function readCookie() {
+/* ---------------- SESSION ---------------- */
+
+async function getCurrentUser() {
     try {
         const response = await fetch(ME_URL, {
             method: "GET",
             credentials: "same-origin"
         });
 
-        if (handleAuthenticationFailure(response)) {
-            return;
+        if (!response.ok) {
+            return null;
         }
 
         const data = await getJsonResponse(response);
 
-        if (!response.ok || !data.success || !data.user) {
-            sessionStorage.clear();
-            window.location.href = "index.html";
-            return;
+        if (!data.success || !data.user) {
+            return null;
         }
 
-        const user = data.user;
-
-        sessionStorage.setItem(
-            "username",
-            user.username || ""
-        );
-
-        sessionStorage.setItem(
-            "full_name",
-            user.full_name || ""
-        );
-
-        sessionStorage.setItem(
-            "role",
-            user.role || "user"
-        );
-
-        const userNameElement =
-            document.getElementById("userName");
-
-        if (userNameElement) {
-            const displayName =
-                user.full_name ||
-                user.username ||
-                "User";
-
-            userNameElement.textContent =
-                `Logged in as ${displayName}`;
-        }
+        return data.user;
 
     } catch (error) {
         console.error(error);
-
-        sessionStorage.clear();
-        window.location.href = "index.html";
+        return null;
     }
 }
 
 
-/*
- * LOGOUT
- */
+async function readCookie() {
+    const user = await getCurrentUser();
+
+    if (!user) {
+        sessionStorage.clear();
+        window.location.href = "index.html";
+        return;
+    }
+
+    sessionStorage.setItem(
+        "username",
+        user.username || ""
+    );
+
+    sessionStorage.setItem(
+        "full_name",
+        user.full_name || ""
+    );
+
+    sessionStorage.setItem(
+        "role",
+        user.role || "user"
+    );
+
+    const userNameElement =
+        document.getElementById("userName");
+
+    if (userNameElement) {
+        userNameElement.textContent =
+            `Logged in as ${
+                user.full_name ||
+                user.username ||
+                "User"
+            }`;
+    }
+}
+
+
+/* ---------------- LOGOUT ---------------- */
+
 async function doLogout() {
     try {
         await fetch(LOGOUT_URL, {
             method: "POST",
             credentials: "same-origin"
         });
-
     } catch (error) {
         console.error(error);
     }
 
     sessionStorage.clear();
-
     window.location.href = "index.html";
 }
 
 
-/*
- * ADD CONTACT
- */
+/* ---------------- CREATE CONTACT ---------------- */
+
 async function addContact() {
     const name =
         document.getElementById("contactName")
-            .value.trim();
+            ?.value.trim() || "";
 
     const phone =
         document.getElementById("contactPhone")
-            .value.trim();
+            ?.value.trim() || "";
 
     const email =
         document.getElementById("contactEmail")
-            .value.trim();
+            ?.value.trim() || "";
 
     const address =
         document.getElementById("contactAddress")
-            .value.trim();
+            ?.value.trim() || "";
 
     const notes =
         document.getElementById("contactNotes")
-            .value.trim();
+            ?.value.trim() || "";
 
     setMessage("contactAddResult", "");
 
@@ -377,11 +357,11 @@ async function addContact() {
             credentials: "same-origin",
 
             body: JSON.stringify({
-                name: name,
-                phone: phone,
-                email: email,
-                address: address,
-                notes: notes
+                name,
+                phone,
+                email,
+                address,
+                notes
             })
         });
 
@@ -408,14 +388,14 @@ async function addContact() {
 
         document
             .getElementById("addContactForm")
-            .reset();
+            ?.reset();
 
-        /*
-         * Search for the newly created contact so the user
-         * immediately sees the result.
-         */
-        document.getElementById("searchText").value =
-            name;
+        const search =
+            document.getElementById("searchText");
+
+        if (search) {
+            search.value = name;
+        }
 
         await searchContact();
 
@@ -430,27 +410,23 @@ async function addContact() {
 }
 
 
-/*
- * SEARCH CONTACTS
- */
-async function searchContact() {
-    const searchInput =
-        document.getElementById("searchText");
+/* ---------------- SEARCH CONTACTS ---------------- */
 
-    const query = searchInput
-        ? searchInput.value.trim()
-        : "";
+async function searchContact() {
+    const query =
+        document.getElementById("searchText")
+            ?.value.trim() || "";
 
     setMessage("contactSearchResult", "");
 
     if (!query) {
         currentContacts = [];
-
         renderContacts([]);
 
         setMessage(
             "contactSearchResult",
-            "Enter something to search for."
+            "Enter something to search for.",
+            "secondary"
         );
 
         return;
@@ -497,14 +473,13 @@ async function searchContact() {
             return;
         }
 
-        const word =
-            currentContacts.length === 1
-                ? "contact"
-                : "contacts";
-
         setMessage(
             "contactSearchResult",
-            `Found ${currentContacts.length} ${word}.`,
+            `Found ${currentContacts.length} ${
+                currentContacts.length === 1
+                    ? "contact"
+                    : "contacts"
+            }.`,
             "success"
         );
 
@@ -519,12 +494,8 @@ async function searchContact() {
 }
 
 
-/*
- * DISPLAY CONTACTS
- *
- * DOM methods are used instead of inserting contact information
- * directly into HTML strings.
- */
+/* ---------------- CONTACT DISPLAY ---------------- */
+
 function renderContacts(contacts) {
     const list =
         document.getElementById("contactList");
@@ -548,13 +519,10 @@ function renderContacts(contacts) {
     }
 
     if (contacts.length === 0) {
-        const column =
-            document.createElement("div");
-
+        const column = document.createElement("div");
         column.className = "col-12";
 
-        const message =
-            document.createElement("p");
+        const message = document.createElement("p");
 
         message.className =
             "text-secondary text-center py-4 mb-0";
@@ -569,48 +537,32 @@ function renderContacts(contacts) {
     }
 
     contacts.forEach(function (contact) {
-        const column =
-            document.createElement("div");
-
+        const column = document.createElement("div");
         column.className = "col-12 col-md-6";
 
-        const card =
-            document.createElement("div");
-
+        const card = document.createElement("div");
         card.className =
             "card h-100 border-secondary-subtle";
 
-        const body =
-            document.createElement("div");
-
+        const body = document.createElement("div");
         body.className = "card-body";
 
-        const header =
-            document.createElement("div");
-
+        const header = document.createElement("div");
         header.className =
             "d-flex justify-content-between align-items-start gap-3 mb-3";
 
-        const name =
-            document.createElement("h3");
-
-        name.className =
-            "h5 card-title mb-0";
-
+        const name = document.createElement("h3");
+        name.className = "h5 card-title mb-0";
         name.textContent =
             contact.name || "Unnamed Contact";
 
-        const actions =
-            document.createElement("div");
-
-        actions.className =
-            "d-flex gap-2";
+        const actions = document.createElement("div");
+        actions.className = "d-flex gap-2";
 
         const editButton =
             document.createElement("button");
 
         editButton.type = "button";
-
         editButton.className =
             "btn btn-outline-primary btn-sm";
 
@@ -633,7 +585,6 @@ function renderContacts(contacts) {
             document.createElement("button");
 
         deleteButton.type = "button";
-
         deleteButton.className =
             "btn btn-outline-danger btn-sm";
 
@@ -698,9 +649,6 @@ function renderContacts(contacts) {
 }
 
 
-/*
- * Add a contact field to a result card.
- */
 function appendContactField(
     parent,
     label,
@@ -711,8 +659,7 @@ function appendContactField(
         return;
     }
 
-    const row =
-        document.createElement("div");
+    const row = document.createElement("div");
 
     row.className =
         "d-flex align-items-start gap-2 mb-2";
@@ -752,9 +699,8 @@ function appendContactField(
 }
 
 
-/*
- * OPEN EDIT MODAL
- */
+/* ---------------- EDIT CONTACT ---------------- */
+
 function openEditContact(contactId) {
     const contact =
         currentContacts.find(function (item) {
@@ -763,11 +709,6 @@ function openEditContact(contactId) {
         });
 
     if (!contact) {
-        setMessage(
-            "contactSearchResult",
-            "Contact could not be found."
-        );
-
         return;
     }
 
@@ -791,21 +732,17 @@ function openEditContact(contactId) {
 
     setMessage("contactEditResult", "");
 
-    const modalElement =
-        document.getElementById("editContactModal");
-
     const modal =
         bootstrap.Modal.getOrCreateInstance(
-            modalElement
+            document.getElementById(
+                "editContactModal"
+            )
         );
 
     modal.show();
 }
 
 
-/*
- * SAVE EDIT
- */
 async function saveContactEdit() {
     const id =
         Number(
@@ -841,15 +778,6 @@ async function saveContactEdit() {
 
     setMessage("contactEditResult", "");
 
-    if (!id) {
-        setMessage(
-            "contactEditResult",
-            "Invalid contact."
-        );
-
-        return;
-    }
-
     if (!name) {
         setMessage(
             "contactEditResult",
@@ -870,12 +798,12 @@ async function saveContactEdit() {
             credentials: "same-origin",
 
             body: JSON.stringify({
-                id: id,
-                name: name,
-                phone: phone,
-                email: email,
-                address: address,
-                notes: notes
+                id,
+                name,
+                phone,
+                email,
+                address,
+                notes
             })
         });
 
@@ -888,8 +816,7 @@ async function saveContactEdit() {
         if (!response.ok) {
             setMessage(
                 "contactEditResult",
-                data.error ||
-                    "Unable to update contact."
+                data.error || "Unable to update contact."
             );
 
             return;
@@ -901,19 +828,12 @@ async function saveContactEdit() {
             "success"
         );
 
-        /*
-         * Wait briefly so the success message is visible,
-         * then close the modal and refresh the search.
-         */
         setTimeout(async function () {
-            const modalElement =
-                document.getElementById(
-                    "editContactModal"
-                );
-
             const modal =
                 bootstrap.Modal.getInstance(
-                    modalElement
+                    document.getElementById(
+                        "editContactModal"
+                    )
                 );
 
             if (modal) {
@@ -935,18 +855,16 @@ async function saveContactEdit() {
 }
 
 
-/*
- * DELETE CONTACT
- *
- * Delete confirmation is intentionally used here.
- */
+/* ---------------- DELETE CONTACT ---------------- */
+
 async function deleteContact(
     contactId,
     contactName
 ) {
-    const confirmed = window.confirm(
-        `Delete ${contactName}?`
-    );
+    const confirmed =
+        window.confirm(
+            `Delete ${contactName}?`
+        );
 
     if (!confirmed) {
         return;
@@ -976,8 +894,7 @@ async function deleteContact(
         if (!response.ok) {
             setMessage(
                 "contactSearchResult",
-                data.error ||
-                    "Unable to delete contact."
+                data.error || "Unable to delete contact."
             );
 
             return;
@@ -999,4 +916,867 @@ async function deleteContact(
             "Unable to connect to the server."
         );
     }
+}
+
+
+/* ==================================================
+   ADMIN
+   ================================================== */
+
+
+/* ---------------- ADMIN INITIALIZATION ---------------- */
+
+async function initializeAdmin() {
+    const user = await getCurrentUser();
+
+    if (!user) {
+        window.location.href = "index.html";
+        return;
+    }
+
+    if (user.role !== "admin") {
+        window.location.href = "contacts.html";
+        return;
+    }
+
+    sessionStorage.setItem(
+        "username",
+        user.username || ""
+    );
+
+    sessionStorage.setItem(
+        "full_name",
+        user.full_name || ""
+    );
+
+    sessionStorage.setItem(
+        "role",
+        user.role
+    );
+
+    const adminName =
+        document.getElementById("adminName");
+
+    if (adminName) {
+        adminName.textContent =
+            `Logged in as ${
+                user.full_name ||
+                user.username
+            } (${user.username})`;
+    }
+
+    await adminLoadAllUsers();
+    await adminLoadAllContacts();
+}
+
+
+/* ---------------- ADMIN USERS ---------------- */
+
+async function adminLoadAllUsers() {
+    const search =
+        document.getElementById(
+            "adminUserSearch"
+        );
+
+    if (search) {
+        search.value = "";
+    }
+
+    await adminFetchUsers("");
+}
+
+
+async function adminSearchUsers() {
+    const query =
+        document.getElementById(
+            "adminUserSearch"
+        )?.value.trim() || "";
+
+    await adminFetchUsers(query);
+}
+
+
+async function adminFetchUsers(query) {
+    setMessage("adminUserResult", "");
+
+    try {
+        const response = await fetch(
+            `${ADMIN_USERS_URL}?q=${encodeURIComponent(query)}`,
+            {
+                method: "GET",
+                credentials: "same-origin"
+            }
+        );
+
+        if (handleAuthenticationFailure(response)) {
+            return;
+        }
+
+        const data = await getJsonResponse(response);
+
+        if (response.status === 403) {
+            window.location.href = "contacts.html";
+            return;
+        }
+
+        if (!response.ok) {
+            setMessage(
+                "adminUserResult",
+                data.error || "Unable to retrieve users."
+            );
+
+            return;
+        }
+
+        currentAdminUsers =
+            Array.isArray(data.users)
+                ? data.users
+                : [];
+
+        renderAdminUsers(currentAdminUsers);
+
+        setMessage(
+            "adminUserResult",
+            `Found ${currentAdminUsers.length} ${
+                currentAdminUsers.length === 1
+                    ? "user"
+                    : "users"
+            }.`,
+            "success"
+        );
+
+    } catch (error) {
+        console.error(error);
+
+        setMessage(
+            "adminUserResult",
+            "Unable to connect to the server."
+        );
+    }
+}
+
+
+function renderAdminUsers(users) {
+    const table =
+        document.getElementById(
+            "adminUserTable"
+        );
+
+    const count =
+        document.getElementById(
+            "adminUserCount"
+        );
+
+    if (!table) {
+        return;
+    }
+
+    table.replaceChildren();
+
+    if (count) {
+        count.textContent =
+            `${users.length} ${
+                users.length === 1
+                    ? "user"
+                    : "users"
+            }`;
+    }
+
+    if (users.length === 0) {
+        const row =
+            document.createElement("tr");
+
+        const cell =
+            document.createElement("td");
+
+        cell.colSpan = 6;
+        cell.className =
+            "text-center text-secondary py-4";
+
+        cell.textContent =
+            "No users found.";
+
+        row.appendChild(cell);
+        table.appendChild(row);
+
+        return;
+    }
+
+    users.forEach(function (user) {
+        const row =
+            document.createElement("tr");
+
+        const username =
+            document.createElement("td");
+
+        username.textContent =
+            user.username || "";
+
+        const name =
+            document.createElement("td");
+
+        name.textContent =
+            user.full_name || "";
+
+        const role =
+            document.createElement("td");
+
+        const roleBadge =
+            document.createElement("span");
+
+        roleBadge.className =
+            user.role === "admin"
+                ? "badge text-bg-primary"
+                : "badge text-bg-secondary";
+
+        roleBadge.textContent =
+            user.role || "user";
+
+        role.appendChild(roleBadge);
+
+
+        const contacts =
+            document.createElement("td");
+
+        contacts.textContent =
+            String(user.contact_count ?? 0);
+
+
+        const status =
+            document.createElement("td");
+
+        const statusBadge =
+            document.createElement("span");
+
+        statusBadge.className =
+            user.is_disabled
+                ? "badge text-bg-danger"
+                : "badge text-bg-success";
+
+        statusBadge.textContent =
+            user.is_disabled
+                ? "Disabled"
+                : "Active";
+
+        status.appendChild(statusBadge);
+
+
+        const actions =
+            document.createElement("td");
+
+        const actionWrapper =
+            document.createElement("div");
+
+        actionWrapper.className =
+            "d-flex flex-wrap gap-2";
+
+
+        const toggleButton =
+            document.createElement("button");
+
+        toggleButton.type = "button";
+
+        toggleButton.className =
+            user.is_disabled
+                ? "btn btn-success btn-sm"
+                : "btn btn-outline-danger btn-sm";
+
+        toggleButton.textContent =
+            user.is_disabled
+                ? "Enable"
+                : "Disable";
+
+        toggleButton.addEventListener(
+            "click",
+            function () {
+                adminToggleUser(
+                    user.id,
+                    !user.is_disabled
+                );
+            }
+        );
+
+
+        const passwordButton =
+            document.createElement("button");
+
+        passwordButton.type = "button";
+        passwordButton.className =
+            "btn btn-outline-warning btn-sm";
+
+        passwordButton.textContent =
+            "Password";
+
+        passwordButton.addEventListener(
+            "click",
+            function () {
+                openAdminPasswordModal(
+                    user.id,
+                    user.username
+                );
+            }
+        );
+
+
+        actionWrapper.appendChild(
+            toggleButton
+        );
+
+        actionWrapper.appendChild(
+            passwordButton
+        );
+
+        actions.appendChild(
+            actionWrapper
+        );
+
+
+        row.appendChild(username);
+        row.appendChild(name);
+        row.appendChild(role);
+        row.appendChild(contacts);
+        row.appendChild(status);
+        row.appendChild(actions);
+
+        table.appendChild(row);
+    });
+}
+
+
+/* ---------------- ENABLE / DISABLE ---------------- */
+
+async function adminToggleUser(
+    userId,
+    disabled
+) {
+    setMessage("adminUserResult", "");
+
+    try {
+        const response = await fetch(
+            ADMIN_DISABLE_URL,
+            {
+                method: "PUT",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                credentials: "same-origin",
+
+                body: JSON.stringify({
+                    user_id: Number(userId),
+                    is_disabled: disabled
+                })
+            }
+        );
+
+        if (handleAuthenticationFailure(response)) {
+            return;
+        }
+
+        const data = await getJsonResponse(response);
+
+        if (!response.ok) {
+            setMessage(
+                "adminUserResult",
+                data.error ||
+                    "Unable to update user."
+            );
+
+            return;
+        }
+
+        setMessage(
+            "adminUserResult",
+            data.message ||
+                "User updated successfully.",
+            "success"
+        );
+
+        await adminSearchUsers();
+
+    } catch (error) {
+        console.error(error);
+
+        setMessage(
+            "adminUserResult",
+            "Unable to connect to the server."
+        );
+    }
+}
+
+
+/* ---------------- PASSWORD MODAL ---------------- */
+
+function openAdminPasswordModal(
+    userId,
+    username
+) {
+    document.getElementById(
+        "adminPasswordUserId"
+    ).value = userId;
+
+    document.getElementById(
+        "adminPasswordUsername"
+    ).textContent = username;
+
+    document.getElementById(
+        "adminNewPassword"
+    ).value = "";
+
+    setMessage(
+        "adminPasswordResult",
+        ""
+    );
+
+    const modal =
+        bootstrap.Modal.getOrCreateInstance(
+            document.getElementById(
+                "adminPasswordModal"
+            )
+        );
+
+    modal.show();
+}
+
+
+async function adminChangePassword() {
+    const userId =
+        Number(
+            document.getElementById(
+                "adminPasswordUserId"
+            ).value
+        );
+
+    const newPassword =
+        document.getElementById(
+            "adminNewPassword"
+        ).value;
+
+    setMessage(
+        "adminPasswordResult",
+        ""
+    );
+
+    if (newPassword.length < 8) {
+        setMessage(
+            "adminPasswordResult",
+            "Password must be at least 8 characters."
+        );
+
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            ADMIN_PASSWORD_URL,
+            {
+                method: "PUT",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                credentials: "same-origin",
+
+                body: JSON.stringify({
+                    user_id: userId,
+                    new_password: newPassword
+                })
+            }
+        );
+
+        if (handleAuthenticationFailure(response)) {
+            return;
+        }
+
+        const data = await getJsonResponse(response);
+
+        if (!response.ok) {
+            setMessage(
+                "adminPasswordResult",
+                data.error ||
+                    "Unable to change password."
+            );
+
+            return;
+        }
+
+        setMessage(
+            "adminPasswordResult",
+            "Password changed successfully.",
+            "success"
+        );
+
+        setTimeout(function () {
+            const modal =
+                bootstrap.Modal.getInstance(
+                    document.getElementById(
+                        "adminPasswordModal"
+                    )
+                );
+
+            if (modal) {
+                modal.hide();
+            }
+
+        }, 500);
+
+    } catch (error) {
+        console.error(error);
+
+        setMessage(
+            "adminPasswordResult",
+            "Unable to connect to the server."
+        );
+    }
+}
+
+
+/* ---------------- CREATE USER ---------------- */
+
+async function adminCreateUser() {
+    const fullName =
+        document.getElementById(
+            "adminCreateFullName"
+        ).value.trim();
+
+    const username =
+        document.getElementById(
+            "adminCreateUsername"
+        ).value.trim();
+
+    const password =
+        document.getElementById(
+            "adminCreatePassword"
+        ).value;
+
+    const role =
+        document.getElementById(
+            "adminCreateRole"
+        ).value;
+
+    setMessage(
+        "adminCreateResult",
+        ""
+    );
+
+    if (
+        !fullName ||
+        !username ||
+        !password ||
+        !role
+    ) {
+        setMessage(
+            "adminCreateResult",
+            "All fields are required."
+        );
+
+        return;
+    }
+
+    if (password.length < 8) {
+        setMessage(
+            "adminCreateResult",
+            "Password must be at least 8 characters."
+        );
+
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            ADMIN_CREATE_URL,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                credentials: "same-origin",
+
+                body: JSON.stringify({
+                    username,
+                    full_name: fullName,
+                    password,
+                    role
+                })
+            }
+        );
+
+        if (handleAuthenticationFailure(response)) {
+            return;
+        }
+
+        const data = await getJsonResponse(response);
+
+        if (!response.ok) {
+            setMessage(
+                "adminCreateResult",
+                data.error ||
+                    "Unable to create account."
+            );
+
+            return;
+        }
+
+        setMessage(
+            "adminCreateResult",
+            `${role === "admin"
+                ? "Administrator"
+                : "User"} created successfully.`,
+            "success"
+        );
+
+        document.getElementById(
+            "adminCreateUserForm"
+        ).reset();
+
+        await adminLoadAllUsers();
+
+    } catch (error) {
+        console.error(error);
+
+        setMessage(
+            "adminCreateResult",
+            "Unable to connect to the server."
+        );
+    }
+}
+
+
+/* ---------------- ADMIN CONTACT SEARCH ---------------- */
+
+async function adminLoadAllContacts() {
+    const search =
+        document.getElementById(
+            "adminContactSearch"
+        );
+
+    if (search) {
+        search.value = "";
+    }
+
+    await adminFetchContacts("");
+}
+
+
+async function adminSearchContacts() {
+    const query =
+        document.getElementById(
+            "adminContactSearch"
+        )?.value.trim() || "";
+
+    await adminFetchContacts(query);
+}
+
+
+async function adminFetchContacts(query) {
+    setMessage(
+        "adminContactResult",
+        ""
+    );
+
+    try {
+        const response = await fetch(
+            `${ADMIN_CONTACTS_URL}?q=${encodeURIComponent(query)}`,
+            {
+                method: "GET",
+                credentials: "same-origin"
+            }
+        );
+
+        if (handleAuthenticationFailure(response)) {
+            return;
+        }
+
+        const data = await getJsonResponse(response);
+
+        if (response.status === 403) {
+            window.location.href =
+                "contacts.html";
+
+            return;
+        }
+
+        if (!response.ok) {
+            setMessage(
+                "adminContactResult",
+                data.error ||
+                    "Unable to retrieve contacts."
+            );
+
+            return;
+        }
+
+        const contacts =
+            Array.isArray(data.contacts)
+                ? data.contacts
+                : [];
+
+        renderAdminContacts(contacts);
+
+        setMessage(
+            "adminContactResult",
+            `Found ${contacts.length} ${
+                contacts.length === 1
+                    ? "contact"
+                    : "contacts"
+            }.`,
+            "success"
+        );
+
+    } catch (error) {
+        console.error(error);
+
+        setMessage(
+            "adminContactResult",
+            "Unable to connect to the server."
+        );
+    }
+}
+
+
+function renderAdminContacts(contacts) {
+    const list =
+        document.getElementById(
+            "adminContactList"
+        );
+
+    const count =
+        document.getElementById(
+            "adminContactCount"
+        );
+
+    if (!list) {
+        return;
+    }
+
+    list.replaceChildren();
+
+    if (count) {
+        count.textContent =
+            `${contacts.length} ${
+                contacts.length === 1
+                    ? "contact"
+                    : "contacts"
+            }`;
+    }
+
+    if (contacts.length === 0) {
+        const column =
+            document.createElement("div");
+
+        column.className = "col-12";
+
+        const message =
+            document.createElement("p");
+
+        message.className =
+            "text-center text-secondary py-4";
+
+        message.textContent =
+            "No contacts found.";
+
+        column.appendChild(message);
+        list.appendChild(column);
+
+        return;
+    }
+
+    contacts.forEach(function (contact) {
+        const column =
+            document.createElement("div");
+
+        column.className =
+            "col-12 col-md-6 col-xl-4";
+
+        const card =
+            document.createElement("div");
+
+        card.className =
+            "card h-100 border-secondary-subtle";
+
+        const body =
+            document.createElement("div");
+
+        body.className =
+            "card-body";
+
+        const name =
+            document.createElement("h3");
+
+        name.className =
+            "h5 card-title";
+
+        name.textContent =
+            contact.name ||
+            "Unnamed Contact";
+
+        body.appendChild(name);
+
+
+        const owner =
+            document.createElement("p");
+
+        owner.className =
+            "small mb-3";
+
+        const ownerLabel =
+            document.createElement("span");
+
+        ownerLabel.className =
+            "badge text-bg-primary me-2";
+
+        ownerLabel.textContent =
+            "Owner";
+
+        const ownerText =
+            document.createElement("span");
+
+        ownerText.textContent =
+            `${contact.owner_name || ""} (${contact.username || ""})`;
+
+        owner.appendChild(ownerLabel);
+        owner.appendChild(ownerText);
+
+        body.appendChild(owner);
+
+
+        appendContactField(
+            body,
+            "Phone",
+            contact.phone,
+            "bi-telephone"
+        );
+
+        appendContactField(
+            body,
+            "Email",
+            contact.email,
+            "bi-envelope"
+        );
+
+        appendContactField(
+            body,
+            "Address",
+            contact.address,
+            "bi-geo-alt"
+        );
+
+        appendContactField(
+            body,
+            "Notes",
+            contact.notes,
+            "bi-sticky"
+        );
+
+        card.appendChild(body);
+        column.appendChild(card);
+        list.appendChild(column);
+    });
 }
