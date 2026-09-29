@@ -24,7 +24,8 @@ cd bruno
 npx @usebruno/cli run --env local
 ```
 
-`docker compose down -v` wipes the local database back to the seed data.
+`docker compose down -v` wipes the local database back to the seed data. Every request, its
+expected response and the full API reference are in `docs/api-testing.md`.
 
 For the live Bruno demo, open the `bruno/` folder in the Bruno app, pick the
 `production` environment, enter `seedPassword`, and run requests 02 to 04.
