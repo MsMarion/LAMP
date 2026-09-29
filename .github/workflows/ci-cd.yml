@@ -18,6 +18,9 @@ jobs:
       - name: PHP syntax check
         run: find . -name '*.php' -not -path './node_modules/*' -print0 | xargs -0 -n1 php -l
 
+      - name: Create .env from the example
+        run: cp .env.example .env
+
       - name: Start Apache + PHP 8.2 + seeded MySQL
         run: docker compose up -d --build
 
@@ -88,7 +91,7 @@ jobs:
             "$SITE_URL/api/login.php")
           echo "login with fake credentials returned $code"
           test "$code" = "401"
-          for path in .env .git/HEAD; do
+          for path in .env .git/HEAD sql/seed.sql; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/$path")
             echo "$path returned $code"
             test "$code" != "200"

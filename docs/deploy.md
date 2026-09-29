@@ -18,10 +18,13 @@ changes to the live database by hand.
 ## Run the tests locally
 
 ```bash
+cp .env.example .env        # first time only; set DB_PASSWORD
 docker compose up -d
 cd bruno
 npx @usebruno/cli run --env local
 ```
+
+`docker compose down -v` wipes the local database back to the seed data.
 
 For the live Bruno demo, open the `bruno/` folder in the Bruno app, pick the
 `production` environment, enter `seedPassword`, and run requests 02 to 04.
@@ -39,29 +42,28 @@ this app.
 sudo tar czf ~/www-backup-$(date +%F).tgz -C /var/www html
 ```
 
-### 2. Move `.env` out of the web root
+### 2. Put `.env` one folder above the web root
 
-`api/config.php` reads its database settings from `.env` one folder above the web root
-(`/var/www/.env` when the site lives in `/var/www/html`), so Apache can never serve it.
-The code running on the droplet today doesn't read `.env` at all, so moving it changes
-nothing on the live site.
+`api/config.php` reads its database settings from `/var/www/.env`, one folder above the
+web root `/var/www/html`, so Apache can never serve it. The `.env` sitting in the web root
+today holds the old Colors App tutorial settings and nothing reads it. Move it out of the
+web root now; that can't affect the running site:
 
 ```bash
-sudo mv /var/www/html/.env /var/www/.env
-sudo sed -i 's/^DB_BANE=/DB_NAME=/' /var/www/.env
-sudo chown root:www-data /var/www/.env
-sudo chmod 640 /var/www/.env
-sudo nano /var/www/.env
+sudo mv /var/www/html/.env ~/colorsapp.env.bak
 ```
 
-The `sed` line fixes the old `DB_BANE` typo. In the editor, check each value against what
-the site uses today (the values typed into the old `api/config.php`). `.env.example`
-lists the keys. On the droplet `DB_HOST` is usually `localhost` and `DB_PORT` is `3306`;
-`3307` is only the Docker port on our laptops. Put quotes around a password that
-contains spaces or `#`.
+Then create the real one from `.env.example`, using the values typed into the old
+`api/config.php` (user `lampuser`, database `lamp_project`, and its password):
 
-Then deploy the new code. The old password was public, so change it and update `.env`
-right away:
+```bash
+sudo nano /var/www/.env
+sudo chown root:www-data /var/www/.env
+sudo chmod 640 /var/www/.env
+```
+
+Put quotes around a password that contains spaces or `#`. Now deploy the new code. The
+old password was public, so change it and update `/var/www/.env` right away:
 
 ```bash
 sudo mysql -e "SELECT user, host FROM mysql.user WHERE user = 'lampuser';"
@@ -76,20 +78,15 @@ only listens locally. The address should be `127.0.0.1`:
 sudo ss -tlnp | grep 3306
 ```
 
-### 3. Block hidden files and move setup files out of the web root
+### 3. Block hidden and setup files, and move the SQL files out
 
-Even with `.env` moved, block every dotfile in Apache as a second layer. This also covers
-`.git/` if the web root was ever a `git clone`. The SQL files list the seed passwords, so
-move them out of the web root too:
+`apache/lamp-security.conf` blocks hidden files (`.env`, `.git`) and project files such
+as `.sql` and `.md`. The Docker image already uses it; install the same file on the
+droplet. The SQL files list the seed passwords, so move them out of the web root too:
 
 ```bash
-echo '<FilesMatch "^\.">
-    Require all denied
-</FilesMatch>
-<DirectoryMatch "/\.">
-    Require all denied
-</DirectoryMatch>' | sudo tee /etc/apache2/conf-available/deny-dotfiles.conf
-sudo a2enconf deny-dotfiles && sudo systemctl reload apache2
+sudo curl -fsSL https://raw.githubusercontent.com/MsMarion/LAMP/main/apache/lamp-security.conf -o /etc/apache2/conf-available/lamp-security.conf
+sudo a2enconf lamp-security && sudo systemctl reload apache2
 mkdir -p ~/lamp-setup && sudo mv /var/www/html/sql /var/www/html/api/schema.sql ~/lamp-setup/
 curl -I https://lamp.finnick.party/.env
 ```
