@@ -1,6 +1,7 @@
 # Secrets and local environment files
 .env
 .env.*
+!.env.example
 *.ini.local
 
 # Editor / OS noise

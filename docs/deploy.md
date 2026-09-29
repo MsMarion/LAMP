@@ -39,50 +39,50 @@ this app.
 sudo tar czf ~/www-backup-$(date +%F).tgz -C /var/www html
 ```
 
-### 2. Move the database password out of the repo
+### 2. Move `.env` out of the web root
 
-`api/config.php` no longer contains a password. It reads `/etc/lamp-app/db.ini`.
-Do these in order so the site never goes down:
-
-1. Create the file with the **current** password:
-
-   ```bash
-   sudo mkdir -p /etc/lamp-app
-   sudo tee /etc/lamp-app/db.ini > /dev/null <<'EOF'
-   DB_HOST = localhost
-   DB_NAME = lamp_project
-   DB_USER = lampuser
-   DB_PASS = "CURRENT-PASSWORD"
-   EOF
-   sudo chown root:www-data /etc/lamp-app/db.ini
-   sudo chmod 640 /etc/lamp-app/db.ini
-   ```
-
-2. Deploy the new code (merge to `main` once deploys are on, or copy it by hand).
-3. The old password was committed to a public repo, so change it, then put the new one
-   in `db.ini` right away:
-
-   ```bash
-   sudo mysql -e "SELECT user, host FROM mysql.user WHERE user = 'lampuser';"
-   sudo mysql -e "ALTER USER 'lampuser'@'localhost' IDENTIFIED BY 'NEW-STRONG-PASSWORD';"
-   sudo nano /etc/lamp-app/db.ini
-   ```
-
-   Use the host the first command printed if it isn't `localhost`.
-
-4. Check that MySQL only listens locally. The address should be `127.0.0.1`:
-
-   ```bash
-   sudo ss -tlnp | grep 3306
-   ```
-
-### 3. Stop serving hidden files
-
-If the web root was a `git clone`, `.git/` and `.env` can be downloaded. Remove them and
-block dotfiles in Apache:
+`api/config.php` reads its database settings from `.env` one folder above the web root
+(`/var/www/.env` when the site lives in `/var/www/html`), so Apache can never serve it.
+The code running on the droplet today doesn't read `.env` at all, so moving it changes
+nothing on the live site.
 
 ```bash
-sudo rm -rf /var/www/html/.git /var/www/html/.env
+sudo mv /var/www/html/.env /var/www/.env
+sudo sed -i 's/^DB_BANE=/DB_NAME=/' /var/www/.env
+sudo chown root:www-data /var/www/.env
+sudo chmod 640 /var/www/.env
+sudo nano /var/www/.env
+```
+
+The `sed` line fixes the old `DB_BANE` typo. In the editor, check each value against what
+the site uses today (the values typed into the old `api/config.php`). `.env.example`
+lists the keys. On the droplet `DB_HOST` is usually `localhost` and `DB_PORT` is `3306`;
+`3307` is only the Docker port on our laptops. Put quotes around a password that
+contains spaces or `#`.
+
+Then deploy the new code. The old password was public, so change it and update `.env`
+right away:
+
+```bash
+sudo mysql -e "SELECT user, host FROM mysql.user WHERE user = 'lampuser';"
+sudo mysql -e "ALTER USER 'lampuser'@'localhost' IDENTIFIED BY 'NEW-STRONG-PASSWORD';"
+sudo nano /var/www/.env
+```
+
+Use the host the first command printed if it isn't `localhost`. Finally, check that MySQL
+only listens locally. The address should be `127.0.0.1`:
+
+```bash
+sudo ss -tlnp | grep 3306
+```
+
+### 3. Block hidden files and move setup files out of the web root
+
+Even with `.env` moved, block every dotfile in Apache as a second layer. This also covers
+`.git/` if the web root was ever a `git clone`. The SQL files list the seed passwords, so
+move them out of the web root too:
+
+```bash
 echo '<FilesMatch "^\.">
     Require all denied
 </FilesMatch>
@@ -90,7 +90,11 @@ echo '<FilesMatch "^\.">
     Require all denied
 </DirectoryMatch>' | sudo tee /etc/apache2/conf-available/deny-dotfiles.conf
 sudo a2enconf deny-dotfiles && sudo systemctl reload apache2
+mkdir -p ~/lamp-setup && sudo mv /var/www/html/sql /var/www/html/api/schema.sql ~/lamp-setup/
+curl -I https://lamp.finnick.party/.env
 ```
+
+The last command should now report `403` or `404`.
 
 ### 4. Create a deploy user
 

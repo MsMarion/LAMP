@@ -1,47 +1,71 @@
 <?php
 // DB connection + JSON header.
 //
-// Credentials never live in this repo. They come from, in order:
-//   1. Environment variables DB_HOST / DB_NAME / DB_USER / DB_PASS
-//      (docker-compose.yml sets these for local development).
-//   2. An INI file outside the web root, /etc/lamp-app/db.ini by default
-//      (override the path with DB_CONFIG). See docs/deploy.md.
+// Settings come from, in order:
+//   1. Environment variables (docker-compose.yml sets these for local development).
+//   2. A .env file one folder ABOVE the web root, e.g. /var/www/.env when the site
+//      lives in /var/www/html, so Apache can never serve it. Override the path with
+//      DB_ENV_FILE. See .env.example for the keys and docs/deploy.md for setup.
 
-$config = [
-    'host' => getenv('DB_HOST'),
-    'name' => getenv('DB_NAME'),
-    'user' => getenv('DB_USER'),
-    'pass' => getenv('DB_PASS'),
-];
+function loadEnvFile($path)
+{
+    $values = [];
 
-if ($config['pass'] === false) {
-    $iniPath = getenv('DB_CONFIG') ?: '/etc/lamp-app/db.ini';
-    $ini = is_readable($iniPath) ? parse_ini_file($iniPath) : false;
-
-    if ($ini !== false) {
-        $config['host'] = $ini['DB_HOST'] ?? $config['host'];
-        $config['name'] = $ini['DB_NAME'] ?? $config['name'];
-        $config['user'] = $ini['DB_USER'] ?? $config['user'];
-        $config['pass'] = $ini['DB_PASS'] ?? false;
+    if (!is_readable($path)) {
+        return $values;
     }
+
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $line = trim($line);
+
+        if ($line === '' || $line[0] === '#' || strpos($line, '=') === false) {
+            continue;
+        }
+
+        list($key, $value) = array_map('trim', explode('=', $line, 2));
+
+        // Strip matching surrounding quotes: DB_PASSWORD="p@ss!"
+        if (strlen($value) >= 2 && ($value[0] === '"' || $value[0] === "'") && substr($value, -1) === $value[0]) {
+            $value = substr($value, 1, -1);
+        }
+
+        $values[$key] = $value;
+    }
+
+    return $values;
 }
 
-if ($config['pass'] === false) {
-    error_log('Database credentials are not configured (see docs/deploy.md).');
+$envFile = loadEnvFile(getenv('DB_ENV_FILE') ?: dirname(__DIR__, 2) . '/.env');
+
+function setting($key, $envFile, $default = null)
+{
+    $value = getenv($key);
+
+    if ($value !== false && $value !== '') {
+        return $value;
+    }
+
+    return $envFile[$key] ?? $default;
+}
+
+$host    = setting('DB_HOST', $envFile, 'localhost');
+$port    = setting('DB_PORT', $envFile, '3306');
+$db      = setting('DB_NAME', $envFile, 'lamp_project');
+$user    = setting('DB_USER', $envFile, 'lampuser');
+$pass    = setting('DB_PASSWORD', $envFile);
+$charset = setting('DB_CHARSET', $envFile, 'utf8mb4');
+
+if ($pass === null) {
+    error_log('Database password is not configured (see .env.example and docs/deploy.md).');
     http_response_code(500);
     header('Content-Type: application/json');
     echo json_encode(['error' => 'Server is not configured']);
     exit;
 }
 
-$host = $config['host'] ?: 'localhost';
-$db   = $config['name'] ?: 'lamp_project';
-$user = $config['user'] ?: 'lampuser';
-$pass = $config['pass'];
-
 try {
     $pdo = new PDO(
-        "mysql:host=$host;dbname=$db;charset=utf8mb4",
+        "mysql:host=$host;port=$port;dbname=$db;charset=$charset",
         $user,
         $pass,
         [

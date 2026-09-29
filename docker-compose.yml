@@ -15,7 +15,7 @@ services:
       DB_HOST: db
       DB_NAME: lamp_project
       DB_USER: lampuser
-      DB_PASS: LampProject26!
+      DB_PASSWORD: LampProject26!
 
     depends_on:
       db:
