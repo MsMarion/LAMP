@@ -10,8 +10,12 @@ services:
     volumes:
       - .:/var/www/html
 
+    # Local-development credentials only; the droplet uses its own (docs/deploy.md).
     environment:
       DB_HOST: db
+      DB_NAME: lamp_project
+      DB_USER: lampuser
+      DB_PASS: LampProject26!
 
     depends_on:
       db:
