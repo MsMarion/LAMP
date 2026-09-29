@@ -1,0 +1,21 @@
+meta {
+  name: Admin API is admin-only
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/admin_users_list.php
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: {{sessionCookie}}
+}
+
+tests {
+  test("a regular user gets 403", function() {
+    expect(res.getStatus()).to.equal(403);
+  });
+}

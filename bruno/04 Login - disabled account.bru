@@ -1,0 +1,27 @@
+meta {
+  name: Login - disabled account
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/login.php
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "dave",
+    "password": "{{seedPassword}}"
+  }
+}
+
+tests {
+  test("403 Forbidden", function() {
+    expect(res.getStatus()).to.equal(403);
+  });
+  test("explains the account is disabled", function() {
+    expect(res.getBody().error).to.contain("disabled");
+  });
+}
