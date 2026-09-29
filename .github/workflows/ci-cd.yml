@@ -1,0 +1,95 @@
+name: CI/CD
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and API tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP syntax check
+        run: find . -name '*.php' -not -path './node_modules/*' -print0 | xargs -0 -n1 php -l
+
+      - name: Start Apache + PHP 8.2 + seeded MySQL
+        run: docker compose up -d --build
+
+      - name: Wait for the API
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+              -H 'Content-Type: application/json' -d '{}' \
+              http://localhost:8081/api/login.php || true)
+            if [ "$code" = "400" ]; then echo "API is up"; exit 0; fi
+            sleep 2
+          done
+          echo "API never came up"; docker compose logs; exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run the Bruno API tests
+        working-directory: bruno
+        run: npx --yes @usebruno/cli@latest run --env ci
+
+      - name: Show container logs
+        if: failure()
+        run: docker compose logs
+
+  deploy:
+    name: Deploy to droplet
+    needs: test
+    # Only pushes to main deploy, and only once the repo variable
+    # DEPLOY_ENABLED is set to "true" (see docs/deploy.md).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      SITE_URL: ${{ vars.SITE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load the deploy key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Copy the app to the droplet
+        run: |
+          rsync -az --delete --exclude-from=.deployignore \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+
+      - name: Smoke-test the live site
+        run: |
+          curl -fsS -o /dev/null "$SITE_URL/"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"ci-smoke-test","password":"not-a-real-password"}' \
+            "$SITE_URL/api/login.php")
+          echo "login with fake credentials returned $code"
+          test "$code" = "401"
+          for path in .env .git/HEAD; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/$path")
+            echo "$path returned $code"
+            test "$code" != "200"
+          done

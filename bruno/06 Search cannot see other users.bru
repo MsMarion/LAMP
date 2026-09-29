@@ -1,0 +1,22 @@
+meta {
+  name: Search cannot see other users
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/contacts_list.php?q=Kevin
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: {{sessionCookie}}
+}
+
+tests {
+  test("Bob's contact is invisible to Alice", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().contacts).to.have.length(0);
+  });
+}

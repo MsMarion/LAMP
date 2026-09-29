@@ -1,0 +1,25 @@
+meta {
+  name: Search own contacts
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/contacts_list.php?q=bri
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: {{sessionCookie}}
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("partial match finds Brian and Bria", function() {
+    const names = res.getBody().contacts.map((c) => c.name).sort();
+    expect(names).to.deep.equal(["Bria Lopez", "Brian Smith"]);
+  });
+}
