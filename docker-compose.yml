@@ -1,0 +1,55 @@
+services:
+
+  web:
+    build: .
+    container_name: lamp-web
+
+    ports:
+      - "8081:80"
+
+    volumes:
+      - .:/var/www/html
+
+    environment:
+      DB_HOST: db
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+
+  db:
+    image: mysql:8.0
+    container_name: lamp-db
+
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: lamp_project
+      MYSQL_USER: lampuser
+      MYSQL_PASSWORD: LampProject26!
+
+    ports:
+      - "3307:3306"
+
+    volumes:
+      - lamp_mysql_data:/var/lib/mysql
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./sql/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-proot"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+
+volumes:
+  lamp_mysql_data:

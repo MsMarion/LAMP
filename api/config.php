@@ -1,9 +1,10 @@
 <?php
-// DB connection + JSON header. Edit creds to match your server.
-$host = 'localhost';
+// DB connection + JSON header.
+
+$host = getenv('DB_HOST') ?: 'localhost';
 $db   = 'lamp_project';
-$user = 'root';
-$pass = '';
+$user = 'lampuser';
+$pass = 'LampProject26!';
 
 try {
     $pdo = new PDO(
@@ -19,7 +20,10 @@ try {
 } catch (PDOException $e) {
     http_response_code(500);
     header('Content-Type: application/json');
-    echo json_encode(['error' => 'DB connection failed', 'detail' => $e->getMessage()]);
+    echo json_encode([
+        'error' => 'DB connection failed',
+        'detail' => $e->getMessage()
+    ]);
     exit;
 }
 
