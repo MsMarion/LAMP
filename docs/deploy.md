@@ -106,7 +106,7 @@ On **your own computer** (not the droplet), make a key that only GitHub will use
 
 ```bash
 ssh-keygen -t ed25519 -f lamp_deploy_key -N "" -C "github-actions-deploy"
-ssh-keyscan -H YOUR-DOMAIN > lamp_known_hosts
+ssh-keyscan -H lamp.finnick.party > lamp_known_hosts
 ```
 
 Back on the droplet, authorize the public key (`lamp_deploy_key.pub`):
@@ -123,12 +123,12 @@ sudo chmod 600 /home/deploy/.ssh/authorized_keys
 Repo **Settings → Secrets and variables → Actions**, or from the folder with the key files:
 
 ```bash
-gh secret set DEPLOY_HOST --body "YOUR-DOMAIN"
+gh secret set DEPLOY_HOST --body "lamp.finnick.party"
 gh secret set DEPLOY_USER --body "deploy"
 gh secret set DEPLOY_PATH --body "/var/www/html"
 gh secret set DEPLOY_SSH_KEY < lamp_deploy_key
 gh secret set DEPLOY_KNOWN_HOSTS < lamp_known_hosts
-gh variable set SITE_URL --body "https://YOUR-DOMAIN"
+gh variable set SITE_URL --body "https://lamp.finnick.party"
 gh variable set DEPLOY_ENABLED --body "true"
 ```
 
