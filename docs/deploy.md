@@ -21,7 +21,7 @@ changes to the live database by hand.
 cp .env.example .env        # first time only (or if a pull deleted your .env); set DB_PASSWORD
 docker compose up -d
 cd bruno
-npx @usebruno/cli run --env local
+npx @usebruno/cli run --env local --disable-cookies
 ```
 
 `docker compose down -v` wipes the local database back to the seed data. Every request, its
@@ -72,20 +72,21 @@ DB_PASSWORD="current-password"
 DB_CHARSET=utf8mb4
 ```
 
-Put quotes around a password that contains spaces or `#`. Now deploy the new code. The
-old password was public, so change it and update `/var/www/.env` right away:
+Put quotes around a password that contains spaces or `#`. Now deploy the new code.
 
-```bash
-sudo mysql -e "SELECT user, host FROM mysql.user WHERE user = 'lampuser';"
-sudo mysql -e "ALTER USER 'lampuser'@'localhost' IDENTIFIED BY 'NEW-STRONG-PASSWORD';"
-sudo nano /var/www/.env
-```
-
-Use the host the first command printed if it isn't `localhost`. Finally, check that MySQL
-only listens locally. The address should be `127.0.0.1`:
+We kept the existing database password. It appears in older commits of this repo, but
+MySQL only accepts connections from the droplet itself, so it can't be used from outside.
+Check that MySQL only listens locally. The address should be `127.0.0.1`:
 
 ```bash
 sudo ss -tlnp | grep 3306
+```
+
+If you ever want to change the password, change it in MySQL and `/var/www/.env` together:
+
+```bash
+sudo mysql -e "ALTER USER 'lampuser'@'localhost' IDENTIFIED BY 'NEW-STRONG-PASSWORD';"
+sudo nano /var/www/.env
 ```
 
 ### 3. Block hidden and setup files, and move the SQL files out
@@ -103,47 +104,47 @@ curl -I https://lamp.finnick.party/.env
 
 The last command should now report `403` or `404`.
 
-### 4. Create a deploy user
+### 4. Create a deploy user that can only copy files
+
+The deploy user is not in the `www-data` group, so it can't read `/var/www/.env`. Its key
+is locked to `rrsync -wo`: it can write into `/var/www/html` and nothing else (no shell, no
+downloads, no `..` paths, no tunnels). Apache reads the files as "other" (644 / 755), and
+PHP can no longer change its own code.
 
 ```bash
-sudo apt install -y rsync
 sudo adduser --disabled-password --gecos "" deploy
-sudo usermod -aG www-data deploy
-sudo chown -R deploy:www-data /var/www/html
-sudo chmod -R g+rX /var/www/html
-```
+sudo chown -R deploy:deploy /var/www/html
+sudo find /var/www/html -type d -exec chmod 755 {} +
+sudo find /var/www/html -type f -exec chmod 644 {} +
 
-On **your own computer** (not the droplet), make a key that only GitHub will use:
-
-```bash
-ssh-keygen -t ed25519 -f lamp_deploy_key -N "" -C "github-actions-deploy"
-ssh-keyscan -H lamp.finnick.party > lamp_known_hosts
-```
-
-Back on the droplet, authorize the public key (`lamp_deploy_key.pub`):
-
-```bash
+sudo install -d -m 700 /root/lamp-deploy-key
+sudo ssh-keygen -t ed25519 -N "" -C "github-actions-deploy" -f /root/lamp-deploy-key/id_ed25519
 sudo install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
-echo "PASTE-THE-PUBLIC-KEY-LINE" | sudo tee -a /home/deploy/.ssh/authorized_keys
+echo "command=\"/usr/bin/rrsync -wo /var/www/html\",restrict $(sudo cat /root/lamp-deploy-key/id_ed25519.pub)" \
+  | sudo tee /home/deploy/.ssh/authorized_keys
 sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys
 sudo chmod 600 /home/deploy/.ssh/authorized_keys
+awk '{print "165.227.80.56,lamp.finnick.party", $1, $2}' /etc/ssh/ssh_host_*_key.pub \
+  | sudo tee /root/lamp-deploy-key/known_hosts
 ```
 
 ### 5. Add the GitHub secrets and variables
 
-Repo **Settings → Secrets and variables → Actions**, or from the folder with the key files:
+`rrsync` treats the deploy path as relative to `/var/www/html`, so `DEPLOY_PATH` is `.`.
+From your own computer (it copies the key straight from the droplet to GitHub):
 
 ```bash
-gh secret set DEPLOY_HOST --body "lamp.finnick.party"
+gh secret set DEPLOY_HOST --body "165.227.80.56"
 gh secret set DEPLOY_USER --body "deploy"
-gh secret set DEPLOY_PATH --body "/var/www/html"
-gh secret set DEPLOY_SSH_KEY < lamp_deploy_key
-gh secret set DEPLOY_KNOWN_HOSTS < lamp_known_hosts
+gh secret set DEPLOY_PATH --body "."
+ssh LAMP-Droplet-26 "cat /root/lamp-deploy-key/known_hosts" | gh secret set DEPLOY_KNOWN_HOSTS
+ssh LAMP-Droplet-26 "cat /root/lamp-deploy-key/id_ed25519" | gh secret set DEPLOY_SSH_KEY
 gh variable set SITE_URL --body "https://lamp.finnick.party"
 gh variable set DEPLOY_ENABLED --body "true"
 ```
 
-Then delete `lamp_deploy_key` from your computer. GitHub keeps the only copy it needs.
+To undo a bad deploy, revert the commit on `main`; the revert deploys like any other push.
+To turn deploys off, set `DEPLOY_ENABLED` to `false`.
 
 ### 6. Protect main
 
