@@ -144,6 +144,7 @@ gh variable set DEPLOY_ENABLED --body "true"
 ```
 
 To undo a bad deploy, revert the commit on `main`; the revert deploys like any other push.
+To redeploy without a new commit, open **Actions → CI/CD → Run workflow** and pick `main`.
 To turn deploys off, set `DEPLOY_ENABLED` to `false`.
 
 ### 6. Protect main
