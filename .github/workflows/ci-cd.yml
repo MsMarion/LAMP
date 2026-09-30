@@ -41,7 +41,7 @@ jobs:
 
       - name: Run the Bruno API tests
         working-directory: bruno
-        run: npx --yes @usebruno/cli@latest run --env ci
+        run: npx --yes @usebruno/cli@latest run --env ci --disable-cookies
 
       - name: Show container logs
         if: failure()

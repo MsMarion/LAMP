@@ -3,15 +3,14 @@
 What we test, how, and what the API returns. Every example response below was captured
 from the real app running locally on 2026-09-29.
 
-**Latest results (2026-09-29)**
+**Latest results (2026-09-30)**
 
 | Where | Requests | Tests | Result |
 |---|---|---|---|
-| Local Docker stack | 11 / 11 | 16 / 16 | ✅ Pass |
-| Fresh-clone rehearsal of the CI pipeline (new database from the seed files) | 11 / 11 | 16 / 16 | ✅ Pass |
-| GitHub Actions on PR #6 (last pushed commit `41a38d8`) | 9 / 9 | 14 / 14 | ✅ Pass (requests 10 and 11 are local, not pushed yet) |
-| Live site, credential-free requests only (01, 03) | 2 / 2 | 3 / 3 | ✅ Pass |
-| Live site, requests 10 and 11 | 0 / 2 | 0 / 2 | ❌ Expected until the droplet setup in `docs/deploy.md` is done: the live site still serves `.env` and `sql/seed.sql` |
+| Local Docker stack | 18 / 18 | 24 / 24 | ✅ Pass |
+| Browser checks of the UI fixes (Playwright, local) | | 9 / 9 | ✅ Pass |
+| Live site, credential-free requests (01, 03, 10, 11) | 4 / 4 | 5 / 5 | ✅ Pass (10 and 11 started passing once `.env` and `sql/` were moved off the web root) |
+| GitHub Actions | | | Runs on every push; see the latest run on the pull request |
 
 ![Bruno run report: 11 requests, 0 errors, 16 of 16 checks passed](images/bruno-report-summary.png)
 
@@ -48,7 +47,7 @@ The app under test is the Contact App Portal. Its sign-in page calls
 | Your computer, command line | Whenever you want | `local` | `npx @usebruno/cli run --env local` |
 | Pre-push check (this PC only) | Before every `git push` | `local`, pointed at `WEB_PORT` | Cancels the push if anything fails; lives in `.git/hooks/pre-push`, not in the repo |
 | GitHub Actions | Every push and pull request | `ci` | Builds a fresh copy of the app with seed data, then runs the whole suite |
-| Live site | Only for the demo | `production` | Run 01 to 07 and 10 to 11 only. **Never run 08 or 09 on the live site**: they create real accounts. |
+| Live site | Only for the demo | `production` | Run 01 to 07 and 10 to 11 only. **Never run 08, 09 or 12 to 18 on the live site**: they create accounts and disable one. |
 
 ## 3. Collection layout
 
@@ -69,11 +68,19 @@ bruno/
 ├── 08 Register new user.bru
 ├── 09 Register duplicate username.bru
 ├── 10 Secrets are not served.bru
-└── 11 Setup files are not served.bru
+├── 11 Setup files are not served.bru
+├── 12 Login as admin.bru
+├── 13 Admin contact search needs a query.bru
+├── 14 Admin contact search finds any owner.bru
+├── 15 Admin cannot disable themselves.bru
+├── 16 Login as the new user.bru
+├── 17 Admin disables the new user.bru
+└── 18 Disabled user is refused mid-session.bru
 ```
 
 Requests run in number order, and the order matters: 01 must run before anyone logs in,
-and 05 to 07 reuse the login from 02.
+05 to 07 reuse the login from 02, and 12 to 18 use the admin login from 12 and the account
+created in 08.
 
 **Variables**
 
@@ -82,7 +89,10 @@ and 05 to 07 reuse the login from 02.
 | `baseUrl` | Environment file | Every request | Where the app is, such as `http://localhost:8081` |
 | `seedPassword` | Environment file (a secret in `production`) | 02, 04, 08, 09 | The shared password of the non-root seed accounts in `sql/seed.sql` |
 | `sessionCookie` | Script in request 02 | 05, 06, 07 | Alice's PHP session cookie (`PHPSESSID=…`) |
-| `newUsername` | Script in request 08 | 08, 09 | A unique username such as `ci_1790724603` |
+| `newUsername`, `newUserId` | Script in request 08 | 08, 09, 16, 17 | The account 08 creates, such as `ci_1790724603` |
+| `rootPassword` | Environment file (a secret in `production`) | 12 | The seed password of `root` in `sql/seed.sql` |
+| `adminCookie`, `adminId` | Script in request 12 | 13, 14, 15, 17 | Root's session cookie and user id |
+| `newUserCookie` | Script in request 16 | 18 | The new account's session cookie |
 
 ## 4. Running the tests
 
@@ -104,13 +114,18 @@ If your local `.env` sets `WEB_PORT` to something other than 8081, edit `baseUrl
 cp .env.example .env          # first time only; set DB_PASSWORD
 docker compose up -d          # starts Apache + PHP 8.2 + MySQL with the seed data
 cd bruno
-npx @usebruno/cli run --env local
+npx @usebruno/cli run --env local --disable-cookies
 ```
+
+`--disable-cookies` matters. By default the CLI keeps a cookie jar and sends the most
+recent login's cookie with every request, which breaks 17 and 18: they need the admin and
+the new user logged in at the same time. In the Bruno app, turn off automatic cookies in
+**Preferences** before running the whole collection.
 
 Point it somewhere else without editing files:
 
 ```bash
-npx @usebruno/cli run --env local --env-var baseUrl=http://localhost:8050
+npx @usebruno/cli run --env local --disable-cookies --env-var baseUrl=http://localhost:8050
 ```
 
 Run a single request:
@@ -143,7 +158,7 @@ docker compose up -d
 2. `cp .env.example .env`, then `docker compose up -d --build`: a brand-new database is
    built from `sql/schema.sql` and `sql/seed.sql`.
 3. Waits until `POST /api/login.php` answers.
-4. `npx @usebruno/cli run --env ci`.
+4. `npx @usebruno/cli run --env ci --disable-cookies`.
 5. On failure, prints the container logs.
 
 A red ❌ on a pull request means one of these steps failed. Open the run's logs to see
@@ -390,6 +405,25 @@ GET {{baseUrl}}/sql/seed.sql
 `sql/seed.sql` lists the default passwords, including root's, so it must never be
 downloadable from the site.
 
+### 12 to 18 · Admin rules and instant suspension
+
+These run as `root` and use the account created in 08, so they never touch the seed users.
+
+| # | Request | Expected |
+|---|---|---|
+| 12 | `POST /api/login.php` as `root` | **200**, `role` is `"admin"`; saves `adminCookie` and `adminId` |
+| 13 | `GET /api/admin_contacts_list.php?q=` | **200** with an empty `contacts` list: contacts are search-only, never all at once |
+| 14 | `GET /api/admin_contacts_list.php?q=pizza` | **200** with exactly one contact, Pizza Palace, owned by `carol` |
+| 15 | `PUT /api/admin_disable_user.php` with root's own id | **400** `"You can't disable your own account"` |
+| 16 | `POST /api/login.php` as the account from 08 | **200**; saves `newUserCookie` |
+| 17 | `PUT /api/admin_disable_user.php` for that account | **200**, `is_disabled` is `true` |
+| 18 | `GET /api/me.php` with the new account's still-open session | **403** with `"code": "account_disabled"` |
+
+18 is the feature from our presentation: the user is still logged in, an admin disables them,
+and their very next request is refused. The web page reads the `account_disabled` code and
+sends them to the login page with *"Your account has been disabled. Contact an
+administrator."*
+
 ## 7. Full API reference
 
 Base path: `/api/`. Every endpoint takes and returns JSON
@@ -413,7 +447,9 @@ does this automatically.
 
 **Access checks.** Every endpoint except `register`, `login` and `logout` calls
 `requireLogin()` first. It re-reads the user from MySQL on **every** request, so an
-account an admin disables is refused on its very next request, even mid-session. The five
+account an admin disables is refused on its very next request, even mid-session. That
+response is `403` with `"code": "account_disabled"`, which tells the web page to send
+the user back to the login page with an explanation. The five
 `admin_*` endpoints call `requireAdmin()`, which adds a role check.
 
 "In suite" marks what the Bruno collection checks automatically. "Verified manually"
@@ -530,7 +566,7 @@ up to 100. Each user includes a contact count.
 }
 ```
 
-#### `GET /api/admin_contacts_list.php?q=<text>`: search every user's contacts · verified manually
+#### `GET /api/admin_contacts_list.php?q=<text>`: search every user's contacts · in suite (13, 14)
 
 Searches every contact field plus the owner's username and full name. Each result
 includes the owner.
@@ -547,11 +583,10 @@ includes the owner.
 }
 ```
 
-> An empty `q` returns up to 100 contacts, and the admin page calls it that way when it
-> opens. The project requires that searches never load every record at once, so the
-> admin page should wait for a search instead.
+An empty `q` returns an empty list. Contacts are search-only, as the project requires, and
+the admin page waits for a search before showing any. At most 100 results.
 
-#### `PUT /api/admin_disable_user.php`: disable or re-enable a user · verified manually
+#### `PUT /api/admin_disable_user.php`: disable or re-enable a user · in suite (15, 17, 18)
 
 Body: `{ "user_id": 15, "is_disabled": true }` (or `false` to re-enable). Works on admins
 too. Users are never deleted.
@@ -561,7 +596,8 @@ too. Users are never deleted.
 Verified: the disabled user's **very next request** returned
 `403 "Account disabled. Contact an administrator."` without logging in again.
 
-Errors: `400` invalid `user_id` or `is_disabled` · `404` `"User not found"`.
+Errors: `400` invalid `user_id` or `is_disabled`, or `"You can't disable your own account"` ·
+`404` `"User not found"`. The admin page also greys out the Disable button on your own row.
 
 #### `PUT /api/admin_change_password.php`: set a user's password · verified manually
 
@@ -587,14 +623,15 @@ username.
 | Project requirement | How it's verified |
 |---|---|
 | Users log in and see only their own contacts | Bruno 02, 05, 06 |
-| Search runs as an API call and SQL query, never loading everything | Bruno 05; an empty search returns nothing (verified manually) |
+| Search runs as an API call and SQL query, never loading everything | Bruno 05 (users), 13 and 14 (admin) |
 | Partial search | Bruno 05 ("bri" finds Bria and Brian) |
 | Register a new account | Bruno 08, 09 |
 | Disabled users can't log in, with a clear message | Bruno 04 |
 | Admin features are admin-only | Bruno 07 |
 | Add, edit and delete contacts; can't touch other users' contacts | Verified manually (section 7) |
-| Admin disables a user, who is refused mid-session | Verified manually |
+| Admin disables a user, who is refused mid-session | Bruno 16, 17, 18; browser check of the redirect |
 | Admin changes a password, and the user logs in with it | Verified manually |
+| An admin can't lock themselves out | Bruno 15; browser check of the greyed-out button |
 | Admin creates other admins | Verified manually |
 | Passwords hashed and salted | Code review: `password_hash()` / bcrypt |
 | HTTPS on a domain name | Live site: valid Let's Encrypt certificate, HTTP redirects to HTTPS |
@@ -602,11 +639,9 @@ username.
 
 ## 9. Known gaps and next tests
 
-- **Not automated yet:** contact create, update and delete; the admin flows (disable →
-  refused mid-session, change password, create admin). Each works when checked by hand;
-  adding them as requests 12 onward would put them in CI.
+- **Not automated yet:** contact create, update and delete; admin change password and
+  create admin. Each works when checked by hand.
 - `contacts_update` clears fields that aren't sent (section 7).
-- The admin page loads up to 100 contacts when it opens (section 7).
 - `login.php` accepts only the username, while `API_contract.txt` says username or email.
 
 **Security findings from probing the local stack (2026-09-29), not fixed yet:**
@@ -615,7 +650,6 @@ username.
 |---|---|---|
 | The session cookie has no `HttpOnly`, `Secure` or `SameSite` flag | Page scripts can read it; it isn't limited to HTTPS | Set the flags with `session_set_cookie_params()` before every `session_start()` |
 | `logout.php` accepts any method, including a plain `GET` | Another site can log users out with a hidden image | Require `POST` |
-| An admin can disable their own account | The only admin can lock everyone out of administration | Refuse `admin_disable_user` for your own `user_id` |
 | No `X-Frame-Options`, `Content-Security-Policy` or `X-Content-Type-Options` headers | The admin dashboard could be framed by another site and clicked through | Add the headers to `apache/lamp-security.conf` |
 | A field sent as the wrong type (for example `"name": ["x"]`) crashes PHP | Locally the error and file paths are printed; the live site returns a bare 500 | Check `is_string()` before `trim()`, and keep `display_errors` off |
 | No limit on login attempts | Passwords can be guessed without slowing down | Count failures per user or IP and pause after a few |
@@ -630,6 +664,7 @@ username.
 | `500 "Server is not configured"` | PHP can't find the database password: check `.env` (locally) or `/var/www/.env` (droplet) |
 | `500 "DB connection failed"` | The password in `.env` doesn't match MySQL. Locally, `docker compose down -v` rebuilds the database with the password in `.env`. |
 | 05 or 06 fail with 401 | 02 didn't run first, or its login failed; run the whole collection in order |
+| 17 fails with 403 "Admin access required", or 18 gets 200 | The cookie jar sent the wrong login: add `--disable-cookies`, or turn off automatic cookies in the Bruno app |
 | 05 finds extra contacts | Local data changed by manual testing: `docker compose down -v` |
 | 10 or 11 fail on the live site | The droplet still serves those files; follow `docs/deploy.md` steps 2 and 3 |
 | `git push` says "push cancelled" | The pre-push check found a problem; read the lines above it. Skip once with `git push --no-verify`. |

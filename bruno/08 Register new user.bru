@@ -22,6 +22,10 @@ script:pre-request {
   bru.setVar("newUsername", "ci_" + Date.now());
 }
 
+script:post-response {
+  bru.setVar("newUserId", res.getBody().user_id);
+}
+
 tests {
   test("201 Created", function() {
     expect(res.getStatus()).to.equal(201);

@@ -1,0 +1,33 @@
+meta {
+  name: Login as admin
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/api/login.php
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "root",
+    "password": "{{rootPassword}}"
+  }
+}
+
+script:post-response {
+  const raw = res.getHeader("set-cookie");
+  const cookies = (Array.isArray(raw) ? raw : [raw]).filter(Boolean);
+  const last = cookies[cookies.length - 1];
+  bru.setVar("adminCookie", last ? last.split(";")[0] : "");
+  bru.setVar("adminId", res.getBody().user_id);
+}
+
+tests {
+  test("200 OK with the admin role", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().role).to.equal("admin");
+  });
+}
