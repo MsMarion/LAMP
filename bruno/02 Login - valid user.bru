@@ -1,0 +1,38 @@
+meta {
+  name: Login - valid user
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/login.php
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "alice",
+    "password": "{{seedPassword}}"
+  }
+}
+
+script:post-response {
+  // Keep the PHP session cookie for the requests that need a logged-in user.
+  const raw = res.getHeader("set-cookie");
+  const cookies = (Array.isArray(raw) ? raw : [raw]).filter(Boolean);
+  const last = cookies[cookies.length - 1];
+  bru.setVar("sessionCookie", last ? last.split(";")[0] : "");
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("returns the user's role", function() {
+    expect(res.getBody().role).to.equal("user");
+  });
+  test("sets a session cookie", function() {
+    expect(bru.getVar("sessionCookie")).to.match(/^PHPSESSID=/);
+  });
+}

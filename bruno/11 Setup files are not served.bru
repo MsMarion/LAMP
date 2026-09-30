@@ -1,0 +1,17 @@
+meta {
+  name: Setup files are not served
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/sql/seed.sql
+  body: none
+  auth: none
+}
+
+tests {
+  test("seed file with test passwords is blocked (403) or missing (404)", function() {
+    expect([403, 404]).to.include(res.getStatus());
+  });
+}

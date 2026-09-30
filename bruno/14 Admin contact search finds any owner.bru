@@ -1,0 +1,25 @@
+meta {
+  name: Admin contact search finds any owner
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{baseUrl}}/api/admin_contacts_list.php?q=pizza
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: {{adminCookie}}
+}
+
+tests {
+  test("finds Carol's contact, with its owner", function() {
+    expect(res.getStatus()).to.equal(200);
+    const contacts = res.getBody().contacts;
+    expect(contacts).to.have.length(1);
+    expect(contacts[0].name).to.equal("Pizza Palace");
+    expect(contacts[0].username).to.equal("carol");
+  });
+}

@@ -1,0 +1,31 @@
+meta {
+  name: Login as the new user
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{baseUrl}}/api/login.php
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "{{newUsername}}",
+    "password": "{{seedPassword}}"
+  }
+}
+
+script:post-response {
+  const raw = res.getHeader("set-cookie");
+  const cookies = (Array.isArray(raw) ? raw : [raw]).filter(Boolean);
+  const last = cookies[cookies.length - 1];
+  bru.setVar("newUserCookie", last ? last.split(";")[0] : "");
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+}

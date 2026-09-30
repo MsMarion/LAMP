@@ -1,0 +1,29 @@
+meta {
+  name: Admin disables the new user
+  type: http
+  seq: 17
+}
+
+put {
+  url: {{baseUrl}}/api/admin_disable_user.php
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: {{adminCookie}}
+}
+
+body:json {
+  {
+    "user_id": {{newUserId}},
+    "is_disabled": true
+  }
+}
+
+tests {
+  test("200 OK, user disabled", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().user.is_disabled).to.equal(true);
+  });
+}

@@ -1,0 +1,29 @@
+meta {
+  name: Admin cannot disable themselves
+  type: http
+  seq: 15
+}
+
+put {
+  url: {{baseUrl}}/api/admin_disable_user.php
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: {{adminCookie}}
+}
+
+body:json {
+  {
+    "user_id": {{adminId}},
+    "is_disabled": true
+  }
+}
+
+tests {
+  test("400: an admin can't lock themselves out", function() {
+    expect(res.getStatus()).to.equal(400);
+    expect(res.getBody().error).to.contain("your own account");
+  });
+}

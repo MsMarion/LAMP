@@ -1,0 +1,33 @@
+meta {
+  name: Register new user
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/register.php
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "{{newUsername}}",
+    "password": "{{seedPassword}}",
+    "full_name": "CI Test User"
+  }
+}
+
+script:pre-request {
+  bru.setVar("newUsername", "ci_" + Date.now());
+}
+
+script:post-response {
+  bru.setVar("newUserId", res.getBody().user_id);
+}
+
+tests {
+  test("201 Created", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+}

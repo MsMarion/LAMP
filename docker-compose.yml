@@ -1,0 +1,61 @@
+# Local stack laid out like the droplet: the site in /var/www/html and its
+# .env one folder above it at /var/www/.env. Copy .env.example to .env first.
+services:
+
+  web:
+    build: .
+    container_name: lamp-web
+
+    ports:
+      - "${WEB_PORT:-8081}:80"
+
+    volumes:
+      - .:/var/www/html
+      - ./.env:/var/www/.env:ro
+
+    # Inside Docker the database is the "db" container, whatever .env says.
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+
+  db:
+    image: mysql:8.0
+    container_name: lamp-db
+
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ${DB_NAME:-lamp_project}
+      MYSQL_USER: ${DB_USER:-lampuser}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Copy .env.example to .env and set DB_PASSWORD}
+
+    # Reachable from this computer only, never from the network.
+    ports:
+      - "127.0.0.1:3307:3306"
+
+    volumes:
+      - lamp_mysql_data:/var/lib/mysql
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./sql/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-proot"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+
+volumes:
+  lamp_mysql_data:

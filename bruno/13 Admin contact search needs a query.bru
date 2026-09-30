@@ -1,0 +1,22 @@
+meta {
+  name: Admin contact search needs a query
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{baseUrl}}/api/admin_contacts_list.php?q=
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: {{adminCookie}}
+}
+
+tests {
+  test("an empty search returns no contacts (never all records at once)", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().contacts).to.have.length(0);
+  });
+}

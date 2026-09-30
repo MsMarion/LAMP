@@ -1,0 +1,24 @@
+meta {
+  name: Disabled user is refused mid-session
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{baseUrl}}/api/me.php
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: {{newUserCookie}}
+}
+
+tests {
+  test("the still-logged-in user's next request gets 403", function() {
+    expect(res.getStatus()).to.equal(403);
+  });
+  test("with code account_disabled, so the page can explain why", function() {
+    expect(res.getBody().code).to.equal("account_disabled");
+  });
+}

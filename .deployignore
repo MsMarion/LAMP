@@ -1,0 +1,17 @@
+# Paths rsync never copies to the droplet (see .github/workflows/ci-cd.yml).
+# A leading slash anchors the pattern to the repo root.
+/.git/
+/.github/
+/.gitignore
+/.deployignore
+/.env
+/.env.*
+/docker-compose.yml
+/Dockerfile
+/sql/
+/docs/
+/bruno/
+/Readme.md
+/API_contract.txt
+/api/schema.sql
+/apache/

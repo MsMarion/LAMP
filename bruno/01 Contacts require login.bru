@@ -1,0 +1,17 @@
+meta {
+  name: Contacts require login
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/contacts_list.php?q=bri
+  body: none
+  auth: none
+}
+
+tests {
+  test("no session: 401", function() {
+    expect(res.getStatus()).to.equal(401);
+  });
+}

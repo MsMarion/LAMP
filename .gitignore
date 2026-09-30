@@ -1,0 +1,14 @@
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+*.ini.local
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node (Bruno CLI runs through npx)
+node_modules/
