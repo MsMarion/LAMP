@@ -13,6 +13,8 @@ from the real app running locally on 2026-09-29.
 | Live site, credential-free requests only (01, 03) | 2 / 2 | 3 / 3 | ✅ Pass |
 | Live site, requests 10 and 11 | 0 / 2 | 0 / 2 | ❌ Expected until the droplet setup in `docs/deploy.md` is done: the live site still serves `.env` and `sql/seed.sql` |
 
+![Bruno run report: 11 requests, 0 errors, 16 of 16 checks passed](images/bruno-report-summary.png)
+
 ---
 
 ## 1. What Bruno is and why we use it
@@ -32,6 +34,11 @@ We use it for two things:
 2. **Automated tests.** Every request file also says what the response *should* be. The
    same files run automatically, so if a change breaks login, search or access control,
    we find out before it reaches the live site.
+
+The app under test is the Contact App Portal. Its sign-in page calls
+`POST /api/login.php`, the same request Bruno sends in 02 to 04:
+
+![The app's sign-in page](images/app-sign-in.png)
 
 ## 2. Where the tests run
 
@@ -112,6 +119,12 @@ Run a single request:
 npx @usebruno/cli run "03 Login - wrong password.bru" --env local
 ```
 
+Save a clickable HTML report of the run (the screenshots on this page come from one):
+
+```bash
+npx @usebruno/cli run --env local --reporter-html results.html
+```
+
 ### Resetting the local data
 
 Requests 08 and 09 add a new `ci_…` user on every run, and manual testing changes data.
@@ -159,6 +172,8 @@ from the start.
 
 Every response has `"success": true` or `false`. Errors always look like
 `{"success": false, "error": "…"}`.
+
+![Every request in the suite passing](images/bruno-report-requests.png)
 
 ### 01 · Contacts require login
 
@@ -359,6 +374,8 @@ GET {{baseUrl}}/.env
 
 Locally, `apache/lamp-security.conf` blocks it with **403**. On the droplet `.env` belongs
 one folder above the web root (`/var/www/.env`), where it can't be reached at all.
+
+![Requesting /.env returns 403 Forbidden](images/env-blocked-403.png)
 
 ### 11 · Setup files are not served
 
@@ -591,6 +608,18 @@ username.
 - `contacts_update` clears fields that aren't sent (section 7).
 - The admin page loads up to 100 contacts when it opens (section 7).
 - `login.php` accepts only the username, while `API_contract.txt` says username or email.
+
+**Security findings from probing the local stack (2026-09-29), not fixed yet:**
+
+| Finding | Risk | Suggested fix |
+|---|---|---|
+| The session cookie has no `HttpOnly`, `Secure` or `SameSite` flag | Page scripts can read it; it isn't limited to HTTPS | Set the flags with `session_set_cookie_params()` before every `session_start()` |
+| `logout.php` accepts any method, including a plain `GET` | Another site can log users out with a hidden image | Require `POST` |
+| An admin can disable their own account | The only admin can lock everyone out of administration | Refuse `admin_disable_user` for your own `user_id` |
+| No `X-Frame-Options`, `Content-Security-Policy` or `X-Content-Type-Options` headers | The admin dashboard could be framed by another site and clicked through | Add the headers to `apache/lamp-security.conf` |
+| A field sent as the wrong type (for example `"name": ["x"]`) crashes PHP | Locally the error and file paths are printed; the live site returns a bare 500 | Check `is_string()` before `trim()`, and keep `display_errors` off |
+| No limit on login attempts | Passwords can be guessed without slowing down | Count failures per user or IP and pause after a few |
+| Usernames accept spaces and HTML | Displayed safely as text, but untidy | Allow only letters, digits, `.`, `_` and `-` |
 
 ## 10. Troubleshooting
 

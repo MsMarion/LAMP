@@ -86,8 +86,8 @@ as `.sql` and `.md`. The Docker image already uses it; install the same file on 
 droplet. The SQL files list the seed passwords, so move them out of the web root too:
 
 ```bash
-sudo curl -fsSL https://raw.githubusercontent.com/MsMarion/LAMP/main/apache/lamp-security.conf -o /etc/apache2/conf-available/lamp-security.conf
-sudo a2enconf lamp-security && sudo systemctl reload apache2
+sudo curl -fsSL https://raw.githubusercontent.com/MsMarion/LAMP/main/apache/lamp-security.conf -o /etc/apache2/conf-available/zz-lamp-security.conf
+sudo a2enconf zz-lamp-security && sudo systemctl reload apache2
 mkdir -p ~/lamp-setup && sudo mv /var/www/html/sql /var/www/html/api/schema.sql ~/lamp-setup/
 curl -I https://lamp.finnick.party/.env
 ```
