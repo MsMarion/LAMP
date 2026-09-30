@@ -18,7 +18,7 @@ changes to the live database by hand.
 ## Run the tests locally
 
 ```bash
-cp .env.example .env        # first time only; set DB_PASSWORD
+cp .env.example .env        # first time only (or if a pull deleted your .env); set DB_PASSWORD
 docker compose up -d
 cd bruno
 npx @usebruno/cli run --env local
@@ -46,21 +46,30 @@ sudo tar czf ~/www-backup-$(date +%F).tgz -C /var/www html
 ### 2. Put `.env` one folder above the web root
 
 `api/config.php` reads its database settings from `/var/www/.env`, one folder above the
-web root `/var/www/html`, so Apache can never serve it. The `.env` sitting in the web root
-today holds the old Colors App tutorial settings and nothing reads it. Move it out of the
-web root now; that can't affect the running site:
+web root `/var/www/html`, so Apache can never serve it. Move the existing `.env` there
+(don't delete it). This must happen **before** the droplet pulls this version of the
+repo, because git deletes a file it stops tracking. Moving it can't affect the running
+site, since the current code doesn't read it:
 
 ```bash
-sudo mv /var/www/html/.env ~/colorsapp.env.bak
-```
-
-Then create the real one from `.env.example`, using the values typed into the old
-`api/config.php` (user `lampuser`, database `lamp_project`, and its password):
-
-```bash
-sudo nano /var/www/.env
+sudo cp /var/www/html/.env ~/env-before-move.bak
+sudo mv /var/www/html/.env /var/www/.env
 sudo chown root:www-data /var/www/.env
 sudo chmod 640 /var/www/.env
+sudo nano /var/www/.env
+```
+
+The file still holds the old Colors App tutorial settings (`ColorsAppDB`, `ColorsAppUser`,
+and a `DB_BANE` typo). While it's open, update it to this app's values, the ones typed
+into the old `api/config.php`. `.env.example` shows the keys:
+
+```
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=lamp_project
+DB_USER=lampuser
+DB_PASSWORD="current-password"
+DB_CHARSET=utf8mb4
 ```
 
 Put quotes around a password that contains spaces or `#`. Now deploy the new code. The
