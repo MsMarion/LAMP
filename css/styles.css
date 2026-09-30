@@ -198,6 +198,9 @@ body {
 
 #loginResult {
     display: inline-block;
+}
+
+#loginResult.text-danger {
     color: var(--color-error) !important; /* 6.45:1 contrast */
 }
 

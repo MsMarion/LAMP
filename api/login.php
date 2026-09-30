@@ -80,7 +80,8 @@ try {
 
         echo json_encode([
             'success' => false,
-            'error' => 'Account disabled. Contact an administrator.'
+            'error' => 'Account disabled. Contact an administrator.',
+            'code' => 'account_disabled'
         ]);
 
         exit;

@@ -16,6 +16,9 @@ const ADMIN_CREATE_URL = "/api/admin_create_user.php";
 
 let currentContacts = [];
 let currentAdminUsers = [];
+let currentAdminId = null;
+let authRedirectPending = false;
+const pendingActions = new Set();
 
 
 /* ---------------- GENERAL ---------------- */
@@ -44,20 +47,85 @@ async function getJsonResponse(response) {
 }
 
 
-function handleAuthenticationFailure(response) {
+// Sends the user to the login page when the session is gone (401) or when an
+// admin disabled the account mid-session (403 with code "account_disabled").
+// Returns true when it redirected, so the caller should stop.
+async function handleAuthenticationFailure(response) {
     if (response.status === 401) {
-        sessionStorage.clear();
-        window.location.href = "index.html";
+        redirectToLogin("");
         return true;
+    }
+
+    if (response.status === 403) {
+        const data = await getJsonResponse(response.clone());
+
+        if (data.code === "account_disabled") {
+            redirectToLogin("?disabled=1");
+            return true;
+        }
     }
 
     return false;
 }
 
 
+function redirectToLogin(query) {
+    authRedirectPending = true;
+    sessionStorage.clear();
+    window.location.href = `index.html${query}`;
+}
+
+
+// Runs an action at most once at a time (a double-click can't send it twice)
+// and disables its button while the request is in flight.
+async function runOnce(action, buttonId, work) {
+    if (pendingActions.has(action)) {
+        return;
+    }
+
+    pendingActions.add(action);
+
+    const button = buttonId
+        ? document.getElementById(buttonId)
+        : null;
+
+    if (button) {
+        button.disabled = true;
+    }
+
+    try {
+        return await work();
+    } finally {
+        pendingActions.delete(action);
+
+        if (button) {
+            button.disabled = false;
+        }
+    }
+}
+
+
+// On the login page, explain why the user was sent back there.
+document.addEventListener("DOMContentLoaded", function () {
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.has("disabled") && document.getElementById("loginResult")) {
+        setMessage(
+            "loginResult",
+            "Your account has been disabled. Contact an administrator."
+        );
+    }
+});
+
+
 /* ---------------- LOGIN ---------------- */
 
 async function doLogin() {
+    return runOnce("login", "loginButton", doLoginNow);
+}
+
+
+async function doLoginNow() {
     const username =
         document.getElementById("loginName")
             ?.value.trim() || "";
@@ -139,6 +207,11 @@ async function doLogin() {
 /* ---------------- REGISTER ---------------- */
 
 async function doRegister() {
+    return runOnce("register", "registerButton", doRegisterNow);
+}
+
+
+async function doRegisterNow() {
     const username =
         document.getElementById("loginName")
             ?.value.trim() || "";
@@ -238,6 +311,10 @@ async function getCurrentUser() {
             credentials: "same-origin"
         });
 
+        if (await handleAuthenticationFailure(response)) {
+            return null;
+        }
+
         if (!response.ok) {
             return null;
         }
@@ -261,8 +338,10 @@ async function readCookie() {
     const user = await getCurrentUser();
 
     if (!user) {
-        sessionStorage.clear();
-        window.location.href = "index.html";
+        if (!authRedirectPending) {
+            redirectToLogin("");
+        }
+
         return;
     }
 
@@ -315,6 +394,11 @@ async function doLogout() {
 /* ---------------- CREATE CONTACT ---------------- */
 
 async function addContact() {
+    return runOnce("addContact", "addContactButton", addContactNow);
+}
+
+
+async function addContactNow() {
     const name =
         document.getElementById("contactName")
             ?.value.trim() || "";
@@ -365,7 +449,7 @@ async function addContact() {
             })
         });
 
-        if (handleAuthenticationFailure(response)) {
+        if (await handleAuthenticationFailure(response)) {
             return;
         }
 
@@ -441,7 +525,7 @@ async function searchContact() {
             }
         );
 
-        if (handleAuthenticationFailure(response)) {
+        if (await handleAuthenticationFailure(response)) {
             return;
         }
 
@@ -744,6 +828,11 @@ function openEditContact(contactId) {
 
 
 async function saveContactEdit() {
+    return runOnce("saveContactEdit", "saveContactButton", saveContactEditNow);
+}
+
+
+async function saveContactEditNow() {
     const id =
         Number(
             document.getElementById(
@@ -807,7 +896,7 @@ async function saveContactEdit() {
             })
         });
 
-        if (handleAuthenticationFailure(response)) {
+        if (await handleAuthenticationFailure(response)) {
             return;
         }
 
@@ -822,13 +911,33 @@ async function saveContactEdit() {
             return;
         }
 
+        // Update the card in place instead of re-running the search, so a
+        // renamed contact doesn't vanish from a search it no longer matches.
+        const index =
+            currentContacts.findIndex(function (item) {
+                return Number(item.id) === id;
+            });
+
+        if (index !== -1) {
+            currentContacts[index] = {
+                ...currentContacts[index],
+                name,
+                phone,
+                email,
+                address,
+                notes
+            };
+        }
+
+        renderContacts(currentContacts);
+
         setMessage(
             "contactEditResult",
             "Contact updated successfully.",
             "success"
         );
 
-        setTimeout(async function () {
+        setTimeout(function () {
             const modal =
                 bootstrap.Modal.getInstance(
                     document.getElementById(
@@ -840,7 +949,11 @@ async function saveContactEdit() {
                 modal.hide();
             }
 
-            await searchContact();
+            setMessage(
+                "contactSearchResult",
+                `Saved changes to ${name}.`,
+                "success"
+            );
 
         }, 400);
 
@@ -858,6 +971,16 @@ async function saveContactEdit() {
 /* ---------------- DELETE CONTACT ---------------- */
 
 async function deleteContact(
+    contactId,
+    contactName
+) {
+    return runOnce(`delete:${contactId}`, null, function () {
+        return deleteContactNow(contactId, contactName);
+    });
+}
+
+
+async function deleteContactNow(
     contactId,
     contactName
 ) {
@@ -885,7 +1008,7 @@ async function deleteContact(
             })
         });
 
-        if (handleAuthenticationFailure(response)) {
+        if (await handleAuthenticationFailure(response)) {
             return;
         }
 
@@ -900,13 +1023,19 @@ async function deleteContact(
             return;
         }
 
+        // Remove the card in place; re-running the search would clear this message.
+        currentContacts =
+            currentContacts.filter(function (item) {
+                return Number(item.id) !== Number(contactId);
+            });
+
+        renderContacts(currentContacts);
+
         setMessage(
             "contactSearchResult",
-            "Contact deleted successfully.",
+            `Deleted ${contactName}.`,
             "success"
         );
-
-        await searchContact();
 
     } catch (error) {
         console.error(error);
@@ -930,7 +1059,10 @@ async function initializeAdmin() {
     const user = await getCurrentUser();
 
     if (!user) {
-        window.location.href = "index.html";
+        if (!authRedirectPending) {
+            redirectToLogin("");
+        }
+
         return;
     }
 
@@ -965,8 +1097,11 @@ async function initializeAdmin() {
             } (${user.username})`;
     }
 
+    currentAdminId = Number(user.id);
+
+    // Admins can see all users. Contacts are search-only: the project
+    // requires that contact records are never all loaded at once.
     await adminLoadAllUsers();
-    await adminLoadAllContacts();
 }
 
 
@@ -1008,7 +1143,7 @@ async function adminFetchUsers(query) {
             }
         );
 
-        if (handleAuthenticationFailure(response)) {
+        if (await handleAuthenticationFailure(response)) {
             return;
         }
 
@@ -1196,6 +1331,13 @@ function renderAdminUsers(users) {
             }
         );
 
+        // An admin can't disable their own account (the server refuses too).
+        if (Number(user.id) === currentAdminId && !user.is_disabled) {
+            toggleButton.disabled = true;
+            toggleButton.title = "You can't disable your own account";
+            username.textContent = `${user.username} (you)`;
+        }
+
 
         const passwordButton =
             document.createElement("button");
@@ -1249,6 +1391,16 @@ async function adminToggleUser(
     userId,
     disabled
 ) {
+    return runOnce(`toggle:${userId}`, null, function () {
+        return adminToggleUserNow(userId, disabled);
+    });
+}
+
+
+async function adminToggleUserNow(
+    userId,
+    disabled
+) {
     setMessage("adminUserResult", "");
 
     try {
@@ -1271,7 +1423,7 @@ async function adminToggleUser(
             }
         );
 
-        if (handleAuthenticationFailure(response)) {
+        if (await handleAuthenticationFailure(response)) {
             return;
         }
 
@@ -1287,14 +1439,15 @@ async function adminToggleUser(
             return;
         }
 
+        // Refresh first: the refresh clears the message area.
+        await adminSearchUsers();
+
         setMessage(
             "adminUserResult",
             data.message ||
                 "User updated successfully.",
             "success"
         );
-
-        await adminSearchUsers();
 
     } catch (error) {
         console.error(error);
@@ -1342,6 +1495,11 @@ function openAdminPasswordModal(
 
 
 async function adminChangePassword() {
+    return runOnce("adminChangePassword", "adminPasswordButton", adminChangePasswordNow);
+}
+
+
+async function adminChangePasswordNow() {
     const userId =
         Number(
             document.getElementById(
@@ -1388,7 +1546,7 @@ async function adminChangePassword() {
             }
         );
 
-        if (handleAuthenticationFailure(response)) {
+        if (await handleAuthenticationFailure(response)) {
             return;
         }
 
@@ -1438,6 +1596,11 @@ async function adminChangePassword() {
 /* ---------------- CREATE USER ---------------- */
 
 async function adminCreateUser() {
+    return runOnce("adminCreateUser", "adminCreateButton", adminCreateUserNow);
+}
+
+
+async function adminCreateUserNow() {
     const fullName =
         document.getElementById(
             "adminCreateFullName"
@@ -1508,7 +1671,7 @@ async function adminCreateUser() {
             }
         );
 
-        if (handleAuthenticationFailure(response)) {
+        if (await handleAuthenticationFailure(response)) {
             return;
         }
 
@@ -1551,25 +1714,23 @@ async function adminCreateUser() {
 
 /* ---------------- ADMIN CONTACT SEARCH ---------------- */
 
-async function adminLoadAllContacts() {
-    const search =
-        document.getElementById(
-            "adminContactSearch"
-        );
-
-    if (search) {
-        search.value = "";
-    }
-
-    await adminFetchContacts("");
-}
-
-
 async function adminSearchContacts() {
     const query =
         document.getElementById(
             "adminContactSearch"
         )?.value.trim() || "";
+
+    if (!query) {
+        renderAdminContacts([]);
+
+        setMessage(
+            "adminContactResult",
+            "Enter something to search for.",
+            "secondary"
+        );
+
+        return;
+    }
 
     await adminFetchContacts(query);
 }
@@ -1590,7 +1751,7 @@ async function adminFetchContacts(query) {
             }
         );
 
-        if (handleAuthenticationFailure(response)) {
+        if (await handleAuthenticationFailure(response)) {
             return;
         }
 

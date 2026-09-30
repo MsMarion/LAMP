@@ -7,75 +7,57 @@ requireAdmin();
 
 $q = trim($_GET['q'] ?? '');
 
+// Contacts are search-only: never return every record at once.
+if ($q === '') {
+    sendJson([
+        'success' => true,
+        'query' => '',
+        'contacts' => []
+    ]);
+}
+
 try {
-    if ($q === '') {
-        $stmt = $pdo->prepare(
-            "SELECT
-                c.id,
-                c.user_id,
-                u.username,
-                u.full_name AS owner_name,
-                c.name,
-                c.phone,
-                c.email,
-                c.address,
-                c.notes,
-                c.created_at,
-                c.updated_at
-             FROM contacts c
-             INNER JOIN users u
-                ON u.id = c.user_id
-             ORDER BY
-                u.username ASC,
-                c.name ASC
-             LIMIT 100"
-        );
+    $search = '%' . $q . '%';
 
-        $stmt->execute();
+    $stmt = $pdo->prepare(
+        "SELECT
+            c.id,
+            c.user_id,
+            u.username,
+            u.full_name AS owner_name,
+            c.name,
+            c.phone,
+            c.email,
+            c.address,
+            c.notes,
+            c.created_at,
+            c.updated_at
+         FROM contacts c
+         INNER JOIN users u
+            ON u.id = c.user_id
+         WHERE
+            c.name LIKE ?
+            OR c.phone LIKE ?
+            OR c.email LIKE ?
+            OR c.address LIKE ?
+            OR c.notes LIKE ?
+            OR u.username LIKE ?
+            OR u.full_name LIKE ?
+         ORDER BY
+            u.username ASC,
+            c.name ASC
+         LIMIT 100"
+    );
 
-    } else {
-        $search = '%' . $q . '%';
-
-        $stmt = $pdo->prepare(
-            "SELECT
-                c.id,
-                c.user_id,
-                u.username,
-                u.full_name AS owner_name,
-                c.name,
-                c.phone,
-                c.email,
-                c.address,
-                c.notes,
-                c.created_at,
-                c.updated_at
-             FROM contacts c
-             INNER JOIN users u
-                ON u.id = c.user_id
-             WHERE
-                c.name LIKE ?
-                OR c.phone LIKE ?
-                OR c.email LIKE ?
-                OR c.address LIKE ?
-                OR c.notes LIKE ?
-                OR u.username LIKE ?
-                OR u.full_name LIKE ?
-             ORDER BY
-                u.username ASC,
-                c.name ASC
-             LIMIT 100"
-        );
-
-        $stmt->execute([
-            $search,
-            $search,
-            $search,
-            $search,
-            $search,
-            $search,
-            $search
-        ]);
-    }
+    $stmt->execute([
+        $search,
+        $search,
+        $search,
+        $search,
+        $search,
+        $search,
+        $search
+    ]);
 
     $contacts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

@@ -85,7 +85,8 @@ function requireLogin()
 
         sendJson([
             'success' => false,
-            'error' => 'Account disabled. Contact an administrator.'
+            'error' => 'Account disabled. Contact an administrator.',
+            'code' => 'account_disabled'
         ], 403);
     }
 

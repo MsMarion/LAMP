@@ -3,7 +3,7 @@
 require_once __DIR__ . '/helpers.php';
 
 requireMethod('PUT');
-requireAdmin();
+$admin = requireAdmin();
 
 $input = json_decode(
     file_get_contents('php://input'),
@@ -50,6 +50,14 @@ $disabledValue =
         $isDisabled,
         FILTER_VALIDATE_BOOLEAN
     ) ? 1 : 0;
+
+// Disabling yourself would lock you out of administration immediately.
+if ($disabledValue === 1 && (int)$userId === (int)$admin['id']) {
+    sendJson([
+        'success' => false,
+        'error' => "You can't disable your own account"
+    ], 400);
+}
 
 try {
     $check = $pdo->prepare(
